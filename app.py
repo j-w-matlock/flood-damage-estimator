@@ -12,7 +12,10 @@ import numpy as np
 import folium
 from folium.plugins import Fullscreen
 from streamlit_folium import st_folium
-import matplotlib.colors as colors
+from matplotlib.cm import Reds
+from matplotlib.colors import Normalize
+
+print("✅ Streamlit app.py started")
 
 @st.cache_data
 def save_uploaded_file(uploadedfile, filename):
@@ -35,6 +38,9 @@ samples = st.number_input("🎲 Monte Carlo Samples", value=100, min_value=10)
 crop_inputs = {}
 flood_metadata = {}
 
+# -------------------------------------
+# 🌱 Crop Setup
+# -------------------------------------
 if crop_file:
     crop_path = save_uploaded_file(crop_file, "crop.tif")
     with rasterio.open(crop_path) as src:
@@ -50,6 +56,9 @@ if crop_file:
             st.warning(f"⚠️ No growing season months selected for crop {code}.")
         crop_inputs[code] = {"Value": val, "GrowingSeason": months}
 
+# -------------------------------------
+# 🌊 Flood Metadata Input
+# -------------------------------------
 if depth_files:
     st.markdown("### ⚙️ Flood Raster Settings")
     for i, f in enumerate(depth_files):
@@ -60,6 +69,9 @@ if depth_files:
             mo = st.number_input(f"Flood Month for {f.name} (1–12)", min_value=1, max_value=12, value=6, key=f"mo_{i}")
         flood_metadata[f.name] = {"return_period": rp, "flood_month": mo}
 
+# -------------------------------------
+# 🚀 Run Estimator
+# -------------------------------------
 if st.button("🚀 Run Flood Damage Estimator"):
     if not crop_file or not depth_files:
         st.error("Please upload both cropland and depth raster files.")
@@ -71,19 +83,25 @@ if st.button("🚀 Run Flood Damage Estimator"):
         with st.spinner("Processing flood damage estimates..."):
             temp_dir = tempfile.mkdtemp()
             depth_paths = [save_uploaded_file(f, f.name) for f in depth_files]
-            result_path, summaries, diagnostics = process_flood_damage(
-                crop_path, depth_paths, temp_dir, period_years, samples, crop_inputs, flood_metadata
-            )
+            try:
+                result_path, summaries, diagnostics = process_flood_damage(
+                    crop_path, depth_paths, temp_dir, period_years, samples, crop_inputs, flood_metadata
+                )
+            except Exception as e:
+                st.error(f"❌ Error during processing: {e}")
+                st.stop()
 
         st.success("✅ Damage estimates complete!")
         st.download_button("📥 Download Excel Summary", data=open(result_path, "rb"), file_name="ag_damage_summary.xlsx")
 
+        # Diagnostics Table
         st.markdown("## 🧪 Diagnostics Log")
         if diagnostics:
             st.dataframe(pd.DataFrame(diagnostics))
         else:
             st.info("✅ No issues detected in damage calculation.")
 
+        # Results and Visualization
         for flood, df in summaries.items():
             st.subheader(f"📊 {flood} Summary")
             if df.empty:
@@ -92,7 +110,6 @@ if st.button("🚀 Run Flood Damage Estimator"):
 
             st.dataframe(df)
 
-            # 📈 Plot total loss per crop
             if "CropCode" in df.columns and "DollarsLost" in df.columns:
                 fig, ax = plt.subplots()
                 df.plot(kind="bar", x="CropCode", y="DollarsLost", ax=ax, legend=False)
@@ -100,10 +117,14 @@ if st.button("🚀 Run Flood Damage Estimator"):
                 ax.set_title(f"Crop Losses for {flood}")
                 st.pyplot(fig)
 
-            # 📸 Overlap visualization + PNG export
+            # 🌄 PNG Visualization
             st.markdown("### 🖼️ Overlap Visualization (Crop / Depth / Damage)")
             damage_path = os.path.join(temp_dir, f"damage_{flood}.tif")
-            depth_file = [f for f in depth_paths if flood in os.path.basename(f)][0]
+            depth_file_matches = [f for f in depth_paths if flood in os.path.basename(f)]
+            if not depth_file_matches:
+                st.warning(f"No matching depth file found for {flood}")
+                continue
+            depth_file = depth_file_matches[0]
 
             with rasterio.open(damage_path) as dsrc:
                 damage = dsrc.read(1)
@@ -131,7 +152,7 @@ if st.button("🚀 Run Flood Damage Estimator"):
             with open(overlap_path, "rb") as f:
                 st.download_button(f"📷 Download Overlap PNG for {flood}", f, file_name=f"overlap_{flood}.png")
 
-            # 🗺️ Folium interactive map
+            # 🗺️ Folium Map
             st.markdown("### 🌍 Interactive Map")
             bounds = rasterio.transform.array_bounds(damage.shape[0], damage.shape[1], transform)
             center_lat = (bounds[1] + bounds[3]) / 2
@@ -140,17 +161,20 @@ if st.button("🚀 Run Flood Damage Estimator"):
             m = folium.Map(location=[center_lat, center_lon], zoom_start=12, control_scale=True)
             Fullscreen().add_to(m)
 
-            # Normalize and convert damage to image
-            damage_norm = np.clip(damage, 0, 1)
-            damage_uint8 = (damage_norm * 255).astype(np.uint8)
+            norm = Normalize(vmin=0, vmax=1)
+            damage_uint8 = (np.clip(damage, 0, 1) * 255).astype(np.uint8)
+
             folium.raster_layers.ImageOverlay(
                 image=damage_uint8,
                 bounds=[[bounds[1], bounds[0]], [bounds[3], bounds[2]]],
                 opacity=0.6,
-                colormap=lambda x: (1, 0, 0, x),  # red heatmap
+                colormap=lambda x: tuple(Reds(norm(x))),
                 name="Damage",
                 interactive=True,
             ).add_to(m)
 
             folium.LayerControl().add_to(m)
             st_folium(m, width=800, height=500)
+
+        # Cleanup (optional, avoids buildup)
+        shutil.rmtree(temp_dir, ignore_errors=True)
