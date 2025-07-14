@@ -3,8 +3,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 from rasterio.enums import Resampling
-from rasterio.warp import reproject, calculate_default_transform
-from rasterio.io import MemoryFile
+from rasterio.warp import reproject
 from scipy.interpolate import interp1d
 from openpyxl import load_workbook
 from openpyxl.chart import BarChart, Reference
@@ -23,47 +22,32 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         return_period = metadata["return_period"]
         flood_month = metadata["flood_month"]
 
-        print(f"\n🌊 Processing {label} (RP={return_period}, Month={flood_month})")
-
-        # STEP 1: Load depth raster (reference raster)
         with rasterio.open(depth_path) as depth_src:
             depth_arr = depth_src.read(1, resampling=Resampling.bilinear)
             depth_crs = depth_src.crs
             depth_transform = depth_src.transform
             depth_shape = depth_src.shape
             pixel_area = abs(depth_transform.a * depth_transform.e)
-            print(f"📏 Depth CRS: {depth_crs}")
-            print(f"📐 Depth Transform: {depth_transform}")
-            print(f"📦 Depth Shape: {depth_shape}")
 
-        # STEP 2: Load crop raster and reproject to match depth grid
         with rasterio.open(crop_raster_path) as crop_src:
-            crop_crs = crop_src.crs
-            crop_transform = crop_src.transform
             crop_arr = crop_src.read(1)
-            print(f"🌾 Crop CRS: {crop_crs}")
-            print(f"🧭 Crop Transform: {crop_transform}")
-
-            # Prepare aligned array
             aligned_crop = np.zeros(depth_shape, dtype=np.uint16)
             reproject(
                 source=crop_arr,
                 destination=aligned_crop,
-                src_transform=crop_transform,
-                src_crs=crop_crs,
+                src_transform=crop_src.transform,
+                src_crs=crop_src.crs,
                 dst_transform=depth_transform,
                 dst_crs=depth_crs,
                 resampling=Resampling.nearest
             )
 
-        # STEP 3: Use aligned arrays
         crop_arr = aligned_crop
 
-        # 🧪 Overlap diagnostics
         overlap_mask = (crop_arr > 0) & (depth_arr > 0)
-        overlap_pixels = np.sum(overlap_mask)
         crop_pixels = np.sum(crop_arr > 0)
         depth_pixels = np.sum(depth_arr > 0)
+        overlap_pixels = np.sum(overlap_mask)
 
         diagnostics.append({
             "Flood": label,
@@ -105,7 +89,6 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         df.to_csv(os.path.join(output_dir, f"summary_{label}.csv"), index=False)
         all_summaries[label] = df
 
-        # Save damage raster
         profile = {
             "driver": "GTiff",
             "height": damage.shape[0],
@@ -122,7 +105,6 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         if df.empty:
             diagnostics.append({"Flood": label, "Crop": "All", "Reason": "No damage detected"})
 
-    # 🎲 Monte Carlo Simulation
     mc_rows = []
     for depth_path in depth_raster_paths:
         label = os.path.splitext(os.path.basename(depth_path))[0]
@@ -179,7 +161,6 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
                 "Annualized": freq * mean_loss
             })
 
-    # Export Excel
     excel_path = os.path.join(output_dir, "ag_damage_summary.xlsx")
     with pd.ExcelWriter(excel_path) as w:
         for lbl, df in all_summaries.items():
