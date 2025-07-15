@@ -3,6 +3,7 @@ import os
 import pandas as pd
 from utils.processing import process_flood_damage
 
+# 🔐 Safe tkinter import
 try:
     from tkinter import Tk, filedialog
     tk_available = True
@@ -28,7 +29,7 @@ if "crop_inputs" not in st.session_state:
 if "flood_metadata" not in st.session_state:
     st.session_state.flood_metadata = {}
 
-# 🔄 Reset App
+# Reset button at top
 if st.button("🔄 Reset App"):
     st.session_state.crop_path = None
     st.session_state.depth_paths = []
@@ -85,7 +86,8 @@ if st.session_state.output_dir:
 
 if st.session_state.crop_path and st.session_state.depth_paths:
     st.markdown("### 🌱 Step 2: Crop Values and Seasons")
-    top_codes = [1, 5, 12, 13, 14, 24, 36, 37, 41, 42]
+    unique_crops = sorted(list({int(c) for c in range(1, 256)}))
+    top_codes = [c for c in unique_crops if c in [1, 5, 12, 13, 14, 24, 36, 37, 41, 42]]
     for code in top_codes:
         val = st.number_input(f"💵 Value per acre for crop {code}", min_value=0.0, value=5500.0, key=f"val_{code}")
         months = st.text_input(f"🌿 Growing season (comma-separated months 1-12) for crop {code}", value="4,5,6,7,8,9", key=f"months_{code}")
@@ -123,7 +125,6 @@ if st.session_state.crop_path and st.session_state.depth_paths:
             except Exception as e:
                 st.error(f"❌ Error during processing: {e}")
 
-# 📊 Results Section
 if st.session_state.result_path and st.session_state.summaries:
     st.download_button("📥 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
 
@@ -139,13 +140,9 @@ if st.session_state.result_path and st.session_state.summaries:
             st.info("ℹ️ No crop damage estimated for this flood scenario.")
             continue
         st.dataframe(df)
-
-        # Plot Expected Annual Damages
         if "CropCode" in df.columns and "EAD" in df.columns:
             chart_df = df[["CropCode", "EAD"]].set_index("CropCode")
             st.bar_chart(chart_df, use_container_width=True)
-
-        # Plot Direct Damages
         if "CropCode" in df.columns and "DirectDamage" in df.columns:
             chart_df2 = df[["CropCode", "DirectDamage"]].set_index("CropCode")
             st.bar_chart(chart_df2, use_container_width=True)
