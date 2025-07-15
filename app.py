@@ -14,50 +14,38 @@ except ImportError:
 
 st.set_page_config(layout="wide")
 
-if "crop_path" not in st.session_state:
-    st.session_state.crop_path = None
-if "depth_paths" not in st.session_state:
-    st.session_state.depth_paths = []
-if "output_dir" not in st.session_state:
-    st.session_state.output_dir = None
-if "summaries" not in st.session_state:
-    st.session_state.summaries = {}
-if "result_path" not in st.session_state:
-    st.session_state.result_path = None
-if "diagnostics" not in st.session_state:
-    st.session_state.diagnostics = []
-if "crop_inputs" not in st.session_state:
-    st.session_state.crop_inputs = {}
-if "flood_metadata" not in st.session_state:
-    st.session_state.flood_metadata = {}
-if "detected_crop_codes" not in st.session_state:
-    st.session_state.detected_crop_codes = []
+# Initialize session state
+for key, default in {
+    "crop_path": None,
+    "depth_paths": [],
+    "output_dir": None,
+    "summaries": {},
+    "result_path": None,
+    "diagnostics": [],
+    "crop_inputs": {},
+    "flood_metadata": {},
+    "detected_crop_codes": []
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-# Reset button at top
+# 🔄 Reset app
 if st.button("🔄 Reset App"):
-    st.session_state.crop_path = None
-    st.session_state.depth_paths = []
-    st.session_state.output_dir = None
-    st.session_state.summaries = {}
-    st.session_state.result_path = None
-    st.session_state.diagnostics = []
-    st.session_state.crop_inputs = {}
-    st.session_state.flood_metadata = {}
-    st.session_state.detected_crop_codes = []
+    for key in st.session_state.keys():
+        st.session_state[key] = None if isinstance(st.session_state[key], (str, type(None))) else []
     st.rerun()
 
 st.title("🌾 Agricultural Flood Damage Estimator")
 
+# ========== Step 1: Select Files ==========
 st.markdown("### 📁 Step 1: Select Input Files")
+
 if tk_available:
-    try:
-        Tk().withdraw()
-    except:
-        pass
+    try: Tk().withdraw()
+    except: pass
 
 if tk_available and st.button("📂 Select CropScape Raster"):
     try:
-        Tk().withdraw()
         crop_path = filedialog.askopenfilename(title="Select CropScape Raster", filetypes=[("GeoTIFF", "*.tif *.img")])
         if crop_path:
             st.session_state.crop_path = crop_path
@@ -74,29 +62,29 @@ if st.session_state.crop_path:
 
 if tk_available and st.button("🌊 Select Flood Depth Raster(s)"):
     try:
-        Tk().withdraw()
         st.session_state.depth_paths = list(filedialog.askopenfilenames(title="Select Depth Rasters", filetypes=[("GeoTIFF", "*.tif *.img")]))
         st.rerun()
     except:
-        st.error("Could not open file dialog. Tkinter may not be supported.")
+        st.error("Could not open file dialog.")
 
 if st.session_state.depth_paths:
+    st.markdown("✅ Selected Depth Rasters:")
     for path in st.session_state.depth_paths:
-        st.markdown(f"✔️ {os.path.basename(path)}")
+        st.markdown(f"- {os.path.basename(path)}")
 
 if tk_available and st.button("📁 Select Output Folder"):
     try:
-        Tk().withdraw()
         st.session_state.output_dir = filedialog.askdirectory(title="Select Output Folder")
         st.rerun()
     except:
-        st.error("Could not open folder dialog. Tkinter may not be supported.")
+        st.error("Could not open folder dialog.")
 
 if st.session_state.output_dir:
     st.success(f"📤 Output Folder: {st.session_state.output_dir}")
 
+# ========== Step 2: Input Crop Data ==========
 if st.session_state.crop_path and st.session_state.depth_paths and st.session_state.detected_crop_codes:
-    st.markdown("### 🌱 Step 2: Crop Values and Seasons")
+    st.markdown("### 🌱 Step 2: Crop Values and Growing Seasons")
     for code in st.session_state.detected_crop_codes:
         val = st.number_input(f"💵 Value per acre for crop {code}", min_value=0.0, value=5500.0, key=f"val_{code}")
         months = st.text_input(f"🌿 Growing season (comma-separated months 1-12) for crop {code}", value="4,5,6,7,8,9", key=f"months_{code}")
@@ -105,6 +93,7 @@ if st.session_state.crop_path and st.session_state.depth_paths and st.session_st
             "GrowingSeason": [int(m.strip()) for m in months.split(",") if m.strip().isdigit() and 1 <= int(m.strip()) <= 12]
         }
 
+    # ========== Step 3: Flood Metadata ==========
     st.markdown("### 📅 Step 3: Flood Metadata")
     for path in st.session_state.depth_paths:
         fname = os.path.basename(path)
@@ -112,9 +101,11 @@ if st.session_state.crop_path and st.session_state.depth_paths and st.session_st
         rp = st.number_input(f"Return Period (years) for {fname}", min_value=1, value=100, key=f"rp_{fname}")
         st.session_state.flood_metadata[fname] = {"flood_month": month, "return_period": rp}
 
+    # ========== Step 4: Run Model ==========
     st.markdown("### 🧮 Step 4: Run Damage Estimator")
-    period_years = st.number_input("Period of Analysis (years)", min_value=1, value=50)
-    samples = st.number_input("Monte Carlo Samples", min_value=1, value=500)
+    period_years = st.number_input("📆 Period of Analysis (years)", min_value=1, value=50)
+    samples = st.number_input("🎲 Monte Carlo Samples", min_value=1, value=500)
+
     if st.button("🚀 Compute Damage Estimates"):
         with st.spinner("Running damage calculations..."):
             try:
@@ -127,13 +118,14 @@ if st.session_state.crop_path and st.session_state.depth_paths and st.session_st
                     st.session_state.crop_inputs,
                     st.session_state.flood_metadata
                 )
-                st.session_state.summaries = summaries
                 st.session_state.result_path = result_path
+                st.session_state.summaries = summaries
                 st.session_state.diagnostics = diagnostics
                 st.success("✅ Damage estimates complete!")
             except Exception as e:
                 st.error(f"❌ Error during processing: {e}")
 
+# ========== Step 5: Output ==========
 if st.session_state.result_path and st.session_state.summaries:
     st.download_button("📥 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
 
@@ -150,8 +142,6 @@ if st.session_state.result_path and st.session_state.summaries:
             continue
         st.dataframe(df)
         if "CropCode" in df.columns and "EAD" in df.columns:
-            chart_df = df[["CropCode", "EAD"]].set_index("CropCode")
-            st.bar_chart(chart_df, use_container_width=True)
+            st.bar_chart(df[["CropCode", "EAD"]].set_index("CropCode"), use_container_width=True)
         if "CropCode" in df.columns and "DirectDamage" in df.columns:
-            chart_df2 = df[["CropCode", "DirectDamage"]].set_index("CropCode")
-            st.bar_chart(chart_df2, use_container_width=True)
+            st.bar_chart(df[["CropCode", "DirectDamage"]].set_index("CropCode"), use_container_width=True)

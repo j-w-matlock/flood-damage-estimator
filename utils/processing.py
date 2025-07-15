@@ -11,19 +11,17 @@ from openpyxl.chart import BarChart, Reference
 import random
 from collections import Counter
 
-
 def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, period_years, samples, crop_inputs, flood_metadata):
     os.makedirs(output_dir, exist_ok=True)
     all_summaries = {}
     diagnostics = []
     mc_rows = []
 
-    # Dynamically determine top crop codes from crop raster
     with rasterio.open(crop_raster_path) as src_crop:
         full_crop_data = src_crop.read(1)
-        unique, counts = np.unique(full_crop_data, return_counts=True)
-        top_codes = sorted(zip(unique, counts), key=lambda x: -x[1])
-        top_crop_codes = [int(code) for code, _ in top_codes if code != 0][:20]  # top 20 excluding 0
+        crop_meta = src_crop.meta.copy()
+        crop_transform = src_crop.transform
+        crop_crs = src_crop.crs
 
     for depth_path in depth_raster_paths:
         label = os.path.splitext(os.path.basename(depth_path))[0]
@@ -67,7 +65,7 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         flooded_acres = {}
         pixel_area = abs(depth_transform[0] * depth_transform[4]) * 0.000247105
 
-        for code in top_crop_codes:
+        for code in crop_inputs:
             if code not in crop_inputs:
                 diagnostics.append({"Flood": label, "CropCode": code, "Note": "Missing crop inputs for this code"})
                 continue
