@@ -70,7 +70,7 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
                 "Loss_5th": round(p5, 2),
                 "Loss_95th": round(p95, 2),
                 "DollarsLost": round(mean_loss, 2),
-                "EAD": round(mean_loss / period_years, 2)
+                "EAD": round(mean_loss / return_period, 2)
             })
 
         summary_df = pd.DataFrame(summary_rows)
