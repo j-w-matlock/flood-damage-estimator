@@ -67,8 +67,8 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
             if flood_month not in params["GrowingSeason"]:
                 diagnostics.append({"Flood": label, "CropCode": code, "Note": "Out of growing season"})
                 continue
-            f = interp1d([0, 0.01, 6], [0, 0.9, 1.0], bounds_error=False, fill_value=(0, 1))
-            damage[mask] = f(depth_data[mask])
+            # Simple full damage model: any depth > 0 gets full damage
+            damage[mask & (depth_data > 0)] = 1.0
             flooded_acres[code] = np.sum(mask) * pixel_area
 
         out_raster_path = os.path.join(output_dir, f"damage_{label}.tif")
@@ -83,12 +83,14 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
             avg_damage = float(np.mean(damage[mask]))
             value = crop_inputs[code]["Value"]
             loss = avg_damage * acres * value
+            frequency = 1.0 / return_period
+            ead = loss * frequency
             summary.append({
                 "CropCode": code,
                 "FloodedAcres": round(acres, 2),
                 "AvgDamage": round(avg_damage, 3),
                 "DollarsLost": round(loss, 2),
-                "EAD": round(loss / period_years, 2)
+                "EAD": round(ead, 2)
             })
 
         df = pd.DataFrame(summary)
