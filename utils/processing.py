@@ -16,6 +16,7 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
     os.makedirs(output_dir, exist_ok=True)
     all_summaries = {}
     diagnostics = []
+    mc_rows = []
 
     for depth_path in depth_raster_paths:
         label = os.path.splitext(os.path.basename(depth_path))[0]
@@ -67,7 +68,6 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
             if flood_month not in params["GrowingSeason"]:
                 diagnostics.append({"Flood": label, "CropCode": code, "Note": "Out of growing season"})
                 continue
-            # Simple full damage model: any depth > 0 gets full damage
             damage[mask & (depth_data > 0)] = 1.0
             flooded_acres[code] = np.sum(mask) * pixel_area
 
@@ -83,15 +83,34 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
             avg_damage = float(np.mean(damage[mask]))
             value = crop_inputs[code]["Value"]
             loss = avg_damage * acres * value
-            frequency = 1.0 / return_period
-            ead = loss * frequency
+            freq = 1.0 / return_period
             summary.append({
+                "Flood": label,
                 "CropCode": code,
                 "FloodedAcres": round(acres, 2),
                 "AvgDamage": round(avg_damage, 3),
                 "DollarsLost": round(loss, 2),
-                "EAD": round(ead, 2)
+                "EAD": round(loss * freq, 2),
+                "RP": return_period
             })
+
+            for s in range(samples):
+                for y in range(1, period_years + 1):
+                    occurs = random.random() < freq
+                    if occurs:
+                        perturbed = np.clip(random.gauss(avg_damage, 0.1 * avg_damage), 0, 1)
+                        loss_amt = perturbed * acres * value
+                    else:
+                        perturbed = 0
+                        loss_amt = 0
+                    mc_rows.append({
+                        "Flood": label,
+                        "CropCode": code,
+                        "Sim": s + 1,
+                        "Year": y,
+                        "Damage": perturbed,
+                        "Loss": loss_amt
+                    })
 
         df = pd.DataFrame(summary)
         all_summaries[label] = df
@@ -109,20 +128,35 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
                     "Crop": row["CropCode"],
                     "EAD": row["EAD"]
                 })
-        summary_df = pd.DataFrame(summary_rows)
-        summary_df.to_excel(writer, sheet_name="EAD_Summary", index=False)
+        pd.DataFrame(summary_rows).to_excel(writer, sheet_name="EAD_Summary", index=False)
+
+        mc_df = pd.DataFrame(mc_rows)
+        mc_df.to_excel(writer, sheet_name="MonteCarlo", index=False)
+
+        # Compute mean and percentiles per Flood-Crop combo
+        ead_stats = []
+        for (flood, crop), grp in mc_df.groupby(["Flood", "CropCode"]):
+            annual_loss_by_sim = grp.groupby("Sim")["Loss"].sum() / period_years
+            ead_stats.append({
+                "Flood": flood,
+                "Crop": crop,
+                "MeanEAD": round(annual_loss_by_sim.mean(), 2),
+                "EAD_5th": round(np.percentile(annual_loss_by_sim, 5), 2),
+                "EAD_95th": round(np.percentile(annual_loss_by_sim, 95), 2)
+            })
+        pd.DataFrame(ead_stats).to_excel(writer, sheet_name="EAD_Stats", index=False)
 
     wb = load_workbook(excel_path)
-    ws = wb["EAD_Summary"]
+    ws = wb["EAD_Stats"]
     chart = BarChart()
-    chart.title = "Expected Annual Damages by Crop"
+    chart.title = "Expected Annual Damages (Monte Carlo)"
     chart.y_axis.title = "EAD ($)"
-    chart.x_axis.title = "Crop"
-    data = Reference(ws, min_col=3, min_row=1, max_row=ws.max_row)
-    cats = Reference(ws, min_col=2, min_row=2, max_row=ws.max_row)
+    chart.x_axis.title = "Flood"
+    data = Reference(ws, min_col=3, min_row=1, max_col=5, max_row=ws.max_row)
+    cats = Reference(ws, min_col=1, min_row=2, max_row=ws.max_row)
     chart.add_data(data, titles_from_data=True)
     chart.set_categories(cats)
-    ws.add_chart(chart, "E2")
+    ws.add_chart(chart, "G2")
     wb.save(excel_path)
 
     return excel_path, all_summaries, diagnostics
