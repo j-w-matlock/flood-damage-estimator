@@ -133,7 +133,6 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         mc_df = pd.DataFrame(mc_rows)
         mc_df.to_excel(writer, sheet_name="MonteCarlo", index=False)
 
-        # Compute mean and percentiles per Flood-Crop combo
         ead_stats = []
         for (flood, crop), grp in mc_df.groupby(["Flood", "CropCode"]):
             annual_loss_by_sim = grp.groupby("Sim")["Loss"].sum() / period_years
@@ -144,7 +143,18 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
                 "EAD_5th": round(np.percentile(annual_loss_by_sim, 5), 2),
                 "EAD_95th": round(np.percentile(annual_loss_by_sim, 95), 2)
             })
-        pd.DataFrame(ead_stats).to_excel(writer, sheet_name="EAD_Stats", index=False)
+        ead_df = pd.DataFrame(ead_stats)
+        ead_df.to_excel(writer, sheet_name="EAD_Stats", index=False)
+
+        total_ead = (
+            ead_df.groupby("Flood")[["MeanEAD", "EAD_5th", "EAD_95th"]].sum()
+            .reset_index().rename(columns={
+                "MeanEAD": "TotalMeanEAD",
+                "EAD_5th": "TotalEAD_5th",
+                "EAD_95th": "TotalEAD_95th"
+            })
+        )
+        total_ead.to_excel(writer, sheet_name="TotalEAD_ByFlood", index=False)
 
     wb = load_workbook(excel_path)
     ws = wb["EAD_Stats"]
