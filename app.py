@@ -126,3 +126,9 @@ if st.session_state.result_path and st.session_state.summaries:
             ax.set_title(f"EAD per Crop for {flood}")
             st.pyplot(fig)
 
+        if "CropCode" in df.columns and "FloodedAcres" in df.columns:
+            fig2, ax2 = plt.subplots()
+            df.plot(kind="bar", x="CropCode", y="FloodedAcres", ax=ax2, legend=False, color="green")
+            ax2.set_ylabel("Flooded Acres")
+            ax2.set_title(f"Flooded Acres per Crop for {flood}")
+            st.pyplot(fig2)
