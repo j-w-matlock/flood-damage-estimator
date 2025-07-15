@@ -18,6 +18,13 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
     diagnostics = []
     mc_rows = []
 
+    # Dynamically determine top crop codes from crop raster
+    with rasterio.open(crop_raster_path) as src_crop:
+        full_crop_data = src_crop.read(1)
+        unique, counts = np.unique(full_crop_data, return_counts=True)
+        top_codes = sorted(zip(unique, counts), key=lambda x: -x[1])
+        top_crop_codes = [int(code) for code, _ in top_codes if code != 0][:20]  # top 20 excluding 0
+
     for depth_path in depth_raster_paths:
         label = os.path.splitext(os.path.basename(depth_path))[0]
         filename = os.path.basename(depth_path)
@@ -60,7 +67,12 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         flooded_acres = {}
         pixel_area = abs(depth_transform[0] * depth_transform[4]) * 0.000247105
 
-        for code, params in crop_inputs.items():
+        for code in top_crop_codes:
+            if code not in crop_inputs:
+                diagnostics.append({"Flood": label, "CropCode": code, "Note": "Missing crop inputs for this code"})
+                continue
+
+            params = crop_inputs[code]
             mask = crop_data == code
             if not np.any(mask):
                 diagnostics.append({"Flood": label, "CropCode": code, "Note": "No pixels of this crop"})
