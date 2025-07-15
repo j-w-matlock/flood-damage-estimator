@@ -4,8 +4,6 @@ import pandas as pd
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.warp import reproject, calculate_default_transform
-from rasterio.io import MemoryFile
-from scipy.interpolate import interp1d
 from openpyxl import load_workbook
 from openpyxl.chart import BarChart, Reference
 import random
@@ -16,12 +14,6 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
     all_summaries = {}
     diagnostics = []
     mc_rows = []
-
-    with rasterio.open(crop_raster_path) as src_crop:
-        full_crop_data = src_crop.read(1)
-        crop_meta = src_crop.meta.copy()
-        crop_transform = src_crop.transform
-        crop_crs = src_crop.crs
 
     for depth_path in depth_raster_paths:
         label = os.path.splitext(os.path.basename(depth_path))[0]
@@ -65,12 +57,7 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         flooded_acres = {}
         pixel_area = abs(depth_transform[0] * depth_transform[4]) * 0.000247105
 
-        for code in crop_inputs:
-            if code not in crop_inputs:
-                diagnostics.append({"Flood": label, "CropCode": code, "Note": "Missing crop inputs for this code"})
-                continue
-
-            params = crop_inputs[code]
+        for code, params in crop_inputs.items():
             mask = crop_data == code
             if not np.any(mask):
                 diagnostics.append({"Flood": label, "CropCode": code, "Note": "No pixels of this crop"})
