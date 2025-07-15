@@ -17,6 +17,8 @@ from matplotlib.colors import Normalize
 
 print("✅ Streamlit app.py started")
 
+print("✅ Streamlit app.py started")
+
 @st.cache_data
 def save_uploaded_file(uploadedfile, filename):
     tmp_dir = os.path.join("temp_data")
