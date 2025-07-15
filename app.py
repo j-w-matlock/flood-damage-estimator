@@ -15,7 +15,7 @@ from streamlit_folium import st_folium
 from matplotlib.cm import Reds
 from matplotlib.colors import Normalize
 
-print("\u2705 Streamlit app.py started")
+print("✅ Streamlit app.py started")
 
 @st.cache_data
 def save_uploaded_file(uploadedfile, filename):
@@ -27,7 +27,7 @@ def save_uploaded_file(uploadedfile, filename):
     return path
 
 st.set_page_config(layout="wide")
-st.title("\ud83c\udf3e Agricultural Flood Damage Estimator")
+st.title("🌾 Agricultural Flood Damage Estimator")
 
 # 🔁 Session state for persistence
 if "result_path" not in st.session_state:
@@ -36,10 +36,10 @@ if "result_path" not in st.session_state:
     st.session_state.diagnostics = None
 
 # File uploads and settings
-crop_file = st.file_uploader("\ud83c\udf3e Upload USDA Cropland Raster (GeoTIFF)", type=["tif", "img"])
-depth_files = st.file_uploader("\ud83c\udf0a Upload One or More Flood Depth Grids (GeoTIFF)", type="tif", accept_multiple_files=True)
-period_years = st.number_input("\ud83d\uddd6\ufe0f Analysis Period (Years)", value=50, min_value=1)
-samples = st.number_input("\ud83c\udfb2 Monte Carlo Samples", value=100, min_value=10)
+crop_file = st.file_uploader("🌾 Upload USDA Cropland Raster (GeoTIFF)", type=["tif", "img"])
+depth_files = st.file_uploader("🌊 Upload One or More Flood Depth Grids (GeoTIFF)", type="tif", accept_multiple_files=True)
+period_years = st.number_input("📆 Analysis Period (Years)", value=50, min_value=1)
+samples = st.number_input("🎲 Monte Carlo Samples", value=100, min_value=10)
 
 crop_inputs = {}
 flood_metadata = {}
@@ -52,7 +52,7 @@ if crop_file:
     counts = Counter(arr.flatten())
     most_common = [c for c, _ in counts.most_common(10) if c != 0]
 
-    st.markdown("### \ud83c\udf31 Define Crop Values and Seasons")
+    st.markdown("### 🌱 Define Crop Values and Seasons")
     for code in most_common:
         val = st.number_input(f"Crop {code} — Value per Acre ($)", value=5500, step=100, key=f"val_{code}")
         months = st.multiselect(f"Crop {code} — Growing Season (months 1–12)", options=list(range(1, 13)), default=list(range(4, 10)), key=f"grow_{code}")
@@ -98,9 +98,9 @@ if st.button("🚀 Run Flood Damage Estimator"):
 
 # 🎯 Show results if available
 if st.session_state.result_path and st.session_state.summaries:
-    st.download_button("\ud83d\udcc5 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
+    st.download_button("📥 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
 
-    st.markdown("## \ud83e\uddea Diagnostics Log")
+    st.markdown("## 🧪 Diagnostics Log")
     if st.session_state.diagnostics:
         st.dataframe(pd.DataFrame(st.session_state.diagnostics))
     else:
@@ -153,7 +153,7 @@ if st.session_state.result_path and st.session_state.summaries:
         with open(overlap_path, "rb") as f:
             st.download_button(f"📷 Download Overlap PNG for {flood}", f, file_name=f"overlap_{flood}.png")
 
-        # 🌍 Folium interactive map
+        # 🗺️ Folium interactive map
         st.markdown("### 🌍 Interactive Map")
         bounds = rasterio.transform.array_bounds(damage.shape[0], damage.shape[1], transform)
         center_lat = (bounds[1] + bounds[3]) / 2
