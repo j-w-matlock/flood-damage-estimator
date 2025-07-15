@@ -2,7 +2,12 @@ import streamlit as st
 import os
 import pandas as pd
 from utils.processing import process_flood_damage
-from tkinter import Tk, filedialog
+
+try:
+    from tkinter import Tk, filedialog
+    tk_available = True
+except ImportError:
+    tk_available = False
 
 st.set_page_config(layout="wide")
 
@@ -23,7 +28,7 @@ if "crop_inputs" not in st.session_state:
 if "flood_metadata" not in st.session_state:
     st.session_state.flood_metadata = {}
 
-# Reset button at top
+# 🔄 Reset App
 if st.button("🔄 Reset App"):
     st.session_state.crop_path = None
     st.session_state.depth_paths = []
@@ -38,33 +43,49 @@ if st.button("🔄 Reset App"):
 st.title("🌾 Agricultural Flood Damage Estimator")
 
 st.markdown("### 📁 Step 1: Select Input Files")
-Tk().withdraw()
-if st.button("📂 Select CropScape Raster"):
-    st.session_state.crop_path = filedialog.askopenfilename(title="Select CropScape Raster", filetypes=[("GeoTIFF", "*.tif *.img")])
-    st.rerun()
+if tk_available:
+    try:
+        Tk().withdraw()
+    except:
+        pass
+
+if tk_available and st.button("📂 Select CropScape Raster"):
+    try:
+        Tk().withdraw()
+        st.session_state.crop_path = filedialog.askopenfilename(title="Select CropScape Raster", filetypes=[("GeoTIFF", "*.tif *.img")])
+        st.rerun()
+    except:
+        st.error("Could not open file dialog. Tkinter may not be supported.")
 
 if st.session_state.crop_path:
     st.success(f"✅ CropScape Raster: {os.path.basename(st.session_state.crop_path)}")
 
-if st.button("🌊 Select Flood Depth Raster(s)"):
-    st.session_state.depth_paths = list(filedialog.askopenfilenames(title="Select Depth Rasters", filetypes=[("GeoTIFF", "*.tif *.img")]))
-    st.rerun()
+if tk_available and st.button("🌊 Select Flood Depth Raster(s)"):
+    try:
+        Tk().withdraw()
+        st.session_state.depth_paths = list(filedialog.askopenfilenames(title="Select Depth Rasters", filetypes=[("GeoTIFF", "*.tif *.img")]))
+        st.rerun()
+    except:
+        st.error("Could not open file dialog. Tkinter may not be supported.")
 
 if st.session_state.depth_paths:
     for path in st.session_state.depth_paths:
         st.markdown(f"✔️ {os.path.basename(path)}")
 
-if st.button("📁 Select Output Folder"):
-    st.session_state.output_dir = filedialog.askdirectory(title="Select Output Folder")
-    st.rerun()
+if tk_available and st.button("📁 Select Output Folder"):
+    try:
+        Tk().withdraw()
+        st.session_state.output_dir = filedialog.askdirectory(title="Select Output Folder")
+        st.rerun()
+    except:
+        st.error("Could not open folder dialog. Tkinter may not be supported.")
 
 if st.session_state.output_dir:
     st.success(f"📤 Output Folder: {st.session_state.output_dir}")
 
 if st.session_state.crop_path and st.session_state.depth_paths:
     st.markdown("### 🌱 Step 2: Crop Values and Seasons")
-    unique_crops = sorted(list({int(c) for c in range(1, 256)}))
-    top_codes = [c for c in unique_crops if c in [1, 5, 12, 13, 14, 24, 36, 37, 41, 42]]
+    top_codes = [1, 5, 12, 13, 14, 24, 36, 37, 41, 42]
     for code in top_codes:
         val = st.number_input(f"💵 Value per acre for crop {code}", min_value=0.0, value=5500.0, key=f"val_{code}")
         months = st.text_input(f"🌿 Growing season (comma-separated months 1-12) for crop {code}", value="4,5,6,7,8,9", key=f"months_{code}")
@@ -102,6 +123,7 @@ if st.session_state.crop_path and st.session_state.depth_paths:
             except Exception as e:
                 st.error(f"❌ Error during processing: {e}")
 
+# 📊 Results Section
 if st.session_state.result_path and st.session_state.summaries:
     st.download_button("📥 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
 
@@ -117,6 +139,13 @@ if st.session_state.result_path and st.session_state.summaries:
             st.info("ℹ️ No crop damage estimated for this flood scenario.")
             continue
         st.dataframe(df)
+
+        # Plot Expected Annual Damages
         if "CropCode" in df.columns and "EAD" in df.columns:
-            fig = df.plot(kind="bar", x="CropCode", y="EAD", title=f"Expected Annual Damages for {flood}").get_figure()
-            st.pyplot(fig)
+            chart_df = df[["CropCode", "EAD"]].set_index("CropCode")
+            st.bar_chart(chart_df, use_container_width=True)
+
+        # Plot Direct Damages
+        if "CropCode" in df.columns and "DirectDamage" in df.columns:
+            chart_df2 = df[["CropCode", "DirectDamage"]].set_index("CropCode")
+            st.bar_chart(chart_df2, use_container_width=True)
