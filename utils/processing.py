@@ -11,6 +11,7 @@ from openpyxl.chart import BarChart, Reference
 import random
 from collections import Counter
 
+
 def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, period_years, samples, crop_inputs, flood_metadata):
     os.makedirs(output_dir, exist_ok=True)
     all_summaries = {}
@@ -23,6 +24,7 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         metadata = flood_metadata.get(filename, {"return_period": 100, "flood_month": 6})
         return_period = metadata["return_period"]
         flood_month = metadata["flood_month"]
+        freq = 1.0 / return_period
 
         print(f"\n🌊 Processing {label} (RP={return_period}, Month={flood_month})")
 
@@ -49,40 +51,52 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
                 diagnostics.append({"Flood": label, "CropCode": crop_code, "Issue": "Out of growing season"})
                 continue
 
-            # Simulate damage using Monte Carlo
+            pixel_area = crop_profile["transform"][0] * -crop_profile["transform"][4]  # assumes square pixels
+            acres_per_pixel = pixel_area * 0.000247105
+            total_pixels = np.sum(mask)
+            total_acres = total_pixels * acres_per_pixel
+            flooded_pixels = np.sum((depth_arr > 0.01) & mask)
+            flooded_acres = flooded_pixels * acres_per_pixel
+
             for s in range(samples):
-                perturbed_depth = depth_arr + np.random.normal(0, 0.1, size=depth_arr.shape)
-                crop_depth = np.where(mask, perturbed_depth, 0)
-                damage_ratio = np.clip(crop_depth / 6.0, 0, 1)
-                loss = damage_ratio * value_per_acre
-                total_loss = np.sum(loss)
+                total_loss = 0
+                for year in range(1, period_years + 1):
+                    occurs = random.uniform(0, 1) < freq
+                    if occurs:
+                        perturbed = depth_arr + np.random.normal(0, 0.1, size=depth_arr.shape)
+                        crop_depth = np.where(mask, perturbed, 0)
+                        damage_ratio = np.clip(crop_depth / 6.0, 0, 1)
+                        avg_dam = np.sum(damage_ratio[mask]) / total_pixels
+                        loss = avg_dam * total_acres * value_per_acre
+                        total_loss += loss
                 mc_rows.append({
                     "Flood": label,
                     "Crop": crop_code,
                     "Sim": s + 1,
-                    "Loss": total_loss
+                    "TotalLoss": total_loss,
+                    "MeanAnnualLoss": total_loss / period_years
                 })
 
-            mean_loss = np.mean([r["Loss"] for r in mc_rows if r["Flood"] == label and r["Crop"] == crop_code])
-            p5 = np.percentile([r["Loss"] for r in mc_rows if r["Flood"] == label and r["Crop"] == crop_code], 5)
-            p95 = np.percentile([r["Loss"] for r in mc_rows if r["Flood"] == label and r["Crop"] == crop_code], 95)
-
-            damage_arr = np.where(mask, damage_ratio, damage_arr)
+            sim_df = pd.DataFrame([r for r in mc_rows if r["Flood"] == label and r["Crop"] == crop_code])
+            mean_loss = sim_df["MeanAnnualLoss"].mean()
+            p5 = sim_df["MeanAnnualLoss"].quantile(0.05)
+            p95 = sim_df["MeanAnnualLoss"].quantile(0.95)
 
             summary_rows.append({
                 "CropCode": crop_code,
                 "ValuePerAcre": value_per_acre,
-                "MeanLoss": round(mean_loss, 2),
+                "MeanAnnualLoss": round(mean_loss, 2),
                 "Loss_5th": round(p5, 2),
                 "Loss_95th": round(p95, 2),
-                "DollarsLost": round(mean_loss, 2),
-                "EAD": round((1.0 / return_period) * mean_loss, 2)
+                "Acres": round(total_acres, 2),
+                "FloodedAcres": round(flooded_acres, 2),
+                "Pixels": int(total_pixels)
             })
 
         summary_df = pd.DataFrame(summary_rows)
         all_summaries[label] = summary_df
 
-        # Save damage raster
+        # Save damage raster (last simulated year’s pattern)
         damage_output_path = os.path.join(output_dir, f"damage_{label}.tif")
         with rasterio.open(damage_output_path, "w", **crop_profile) as dst:
             dst.write(damage_arr, 1)
@@ -91,22 +105,22 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
     excel_path = os.path.join(output_dir, "ag_damage_summary.xlsx")
     with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
         for flood, df in all_summaries.items():
-            df.to_excel(writer, sheet_name=flood, index=False)
+            df.to_excel(writer, sheet_name=flood[:31], index=False)
         pd.DataFrame(diagnostics).to_excel(writer, sheet_name="Diagnostics", index=False)
         pd.DataFrame(mc_rows).to_excel(writer, sheet_name="MonteCarlo", index=False)
 
-        # Add EAD summary chart
+        # Add summary chart
         workbook = writer.book
         for flood in all_summaries:
-            sheet = workbook[flood]
+            sheet = workbook[flood[:31]]
             chart = BarChart()
-            chart.title = "Expected Annual Damage by Crop"
+            chart.title = "Mean Annual Crop Loss"
             chart.x_axis.title = "CropCode"
-            chart.y_axis.title = "EAD ($/yr)"
-            data = Reference(sheet, min_col=8, min_row=1, max_row=sheet.max_row)
+            chart.y_axis.title = "$ per year"
+            data = Reference(sheet, min_col=3, min_row=1, max_row=sheet.max_row)
             cats = Reference(sheet, min_col=1, min_row=2, max_row=sheet.max_row)
             chart.add_data(data, titles_from_data=True)
             chart.set_categories(cats)
-            sheet.add_chart(chart, "K2")
+            sheet.add_chart(chart, "J2")
 
     return excel_path, all_summaries, diagnostics
