@@ -27,7 +27,7 @@ for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths
 if st.button("🔁 Reset App"):
     for key in st.session_state.keys():
         del st.session_state[key]
-    st.experimental_rerun()
+    st.rerun()
 
 # File uploads and settings
 crop_file = st.file_uploader("🌾 Upload USDA Cropland Raster (GeoTIFF)", type=["tif", "img"])
@@ -112,11 +112,15 @@ if st.session_state.result_path and st.session_state.summaries:
 
     for flood, df in st.session_state.summaries.items():
         st.subheader(f"📊 {flood} Summary")
+
+        if not df.empty:
+            df["EAD"] = (df["DollarsLost"] / period_years).round(2)
+
         st.dataframe(df)
 
-        if "CropCode" in df.columns and "DollarsLost" in df.columns:
+        if "CropCode" in df.columns and "EAD" in df.columns:
             fig, ax = plt.subplots()
-            df.plot(kind="bar", x="CropCode", y="DollarsLost", ax=ax, legend=False)
-            ax.set_ylabel("Total Loss ($)")
-            ax.set_title(f"Crop Losses for {flood}")
+            df.plot(kind="bar", x="CropCode", y="EAD", ax=ax, legend=False)
+            ax.set_ylabel("Expected Annual Damage ($)")
+            ax.set_title(f"EAD per Crop for {flood}")
             st.pyplot(fig)
