@@ -1,4 +1,3 @@
-# ... (imports stay the same)
 import streamlit as st
 import os
 import json
@@ -16,9 +15,7 @@ from streamlit_folium import st_folium
 from matplotlib.cm import Reds
 from matplotlib.colors import Normalize
 
-print("✅ Streamlit app.py started")
-
-print("✅ Streamlit app.py started")
+print("\u2705 Streamlit app.py started")
 
 @st.cache_data
 def save_uploaded_file(uploadedfile, filename):
@@ -30,7 +27,7 @@ def save_uploaded_file(uploadedfile, filename):
     return path
 
 st.set_page_config(layout="wide")
-st.title("🌾 Agricultural Flood Damage Estimator")
+st.title("\ud83c\udf3e Agricultural Flood Damage Estimator")
 
 # 🔁 Session state for persistence
 if "result_path" not in st.session_state:
@@ -39,17 +36,15 @@ if "result_path" not in st.session_state:
     st.session_state.diagnostics = None
 
 # File uploads and settings
-crop_file = st.file_uploader("🌾 Upload USDA Cropland Raster (GeoTIFF)", type=["tif", "img"])
-depth_files = st.file_uploader("🌊 Upload One or More Flood Depth Grids (GeoTIFF)", type="tif", accept_multiple_files=True)
-period_years = st.number_input("📆 Analysis Period (Years)", value=50, min_value=1)
-samples = st.number_input("🎲 Monte Carlo Samples", value=100, min_value=10)
+crop_file = st.file_uploader("\ud83c\udf3e Upload USDA Cropland Raster (GeoTIFF)", type=["tif", "img"])
+depth_files = st.file_uploader("\ud83c\udf0a Upload One or More Flood Depth Grids (GeoTIFF)", type="tif", accept_multiple_files=True)
+period_years = st.number_input("\ud83d\uddd6\ufe0f Analysis Period (Years)", value=50, min_value=1)
+samples = st.number_input("\ud83c\udfb2 Monte Carlo Samples", value=100, min_value=10)
 
 crop_inputs = {}
 flood_metadata = {}
 
-# -------------------------------------
 # 🌱 Crop Setup
-# -------------------------------------
 if crop_file:
     crop_path = save_uploaded_file(crop_file, "crop.tif")
     with rasterio.open(crop_path) as src:
@@ -57,7 +52,7 @@ if crop_file:
     counts = Counter(arr.flatten())
     most_common = [c for c, _ in counts.most_common(10) if c != 0]
 
-    st.markdown("### 🌱 Define Crop Values and Seasons")
+    st.markdown("### \ud83c\udf31 Define Crop Values and Seasons")
     for code in most_common:
         val = st.number_input(f"Crop {code} — Value per Acre ($)", value=5500, step=100, key=f"val_{code}")
         months = st.multiselect(f"Crop {code} — Growing Season (months 1–12)", options=list(range(1, 13)), default=list(range(4, 10)), key=f"grow_{code}")
@@ -65,9 +60,7 @@ if crop_file:
             st.warning(f"⚠️ No growing season months selected for crop {code}.")
         crop_inputs[code] = {"Value": val, "GrowingSeason": months}
 
-# -------------------------------------
 # 🌊 Flood Metadata Input
-# -------------------------------------
 if depth_files:
     st.markdown("### ⚙️ Flood Raster Settings")
     for i, f in enumerate(depth_files):
@@ -105,34 +98,34 @@ if st.button("🚀 Run Flood Damage Estimator"):
 
 # 🎯 Show results if available
 if st.session_state.result_path and st.session_state.summaries:
-    st.download_button("📥 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
+    st.download_button("\ud83d\udcc5 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
 
-        st.markdown("## 🧪 Diagnostics Log")
-        if diagnostics:
-            st.dataframe(pd.DataFrame(diagnostics))
-        else:
-            st.info("✅ No issues detected in damage calculation.")
+    st.markdown("## \ud83e\uddea Diagnostics Log")
+    if st.session_state.diagnostics:
+        st.dataframe(pd.DataFrame(st.session_state.diagnostics))
+    else:
+        st.info("✅ No issues detected in damage calculation.")
 
-        for flood, df in summaries.items():
-            st.subheader(f"📊 {flood} Summary")
-            if df.empty:
-                st.info("ℹ️ No crop damage estimated for this flood scenario.")
-                continue
+    for flood, df in st.session_state.summaries.items():
+        st.subheader(f"📊 {flood} Summary")
+        if df.empty:
+            st.info("ℹ️ No crop damage estimated for this flood scenario.")
+            continue
 
         st.dataframe(df)
 
-            # 📈 Plot total loss per crop
-            if "CropCode" in df.columns and "DollarsLost" in df.columns:
-                fig, ax = plt.subplots()
-                df.plot(kind="bar", x="CropCode", y="DollarsLost", ax=ax, legend=False)
-                ax.set_ylabel("Total Loss ($)")
-                ax.set_title(f"Crop Losses for {flood}")
-                st.pyplot(fig)
+        # 📈 Plot total loss per crop
+        if "CropCode" in df.columns and "DollarsLost" in df.columns:
+            fig, ax = plt.subplots()
+            df.plot(kind="bar", x="CropCode", y="DollarsLost", ax=ax, legend=False)
+            ax.set_ylabel("Total Loss ($)")
+            ax.set_title(f"Crop Losses for {flood}")
+            st.pyplot(fig)
 
-            # 📸 Overlap visualization + PNG export
-            st.markdown("### 🖼️ Overlap Visualization (Crop / Depth / Damage)")
-            damage_path = os.path.join(temp_dir, f"damage_{flood}.tif")
-            depth_file = [f for f in depth_paths if flood in os.path.basename(f)][0]
+        # 📸 Overlap visualization + PNG export
+        st.markdown("### 🖼️ Overlap Visualization (Crop / Depth / Damage)")
+        damage_path = os.path.join(temp_dir, f"damage_{flood}.tif")
+        depth_file = [f for f in depth_paths if flood in os.path.basename(f)][0]
 
         with rasterio.open(damage_path) as dsrc:
             damage = dsrc.read(1)
@@ -160,26 +153,25 @@ if st.session_state.result_path and st.session_state.summaries:
         with open(overlap_path, "rb") as f:
             st.download_button(f"📷 Download Overlap PNG for {flood}", f, file_name=f"overlap_{flood}.png")
 
-            # 🗺️ Folium interactive map
-            st.markdown("### 🌍 Interactive Map")
-            bounds = rasterio.transform.array_bounds(damage.shape[0], damage.shape[1], transform)
-            center_lat = (bounds[1] + bounds[3]) / 2
-            center_lon = (bounds[0] + bounds[2]) / 2
+        # 🌍 Folium interactive map
+        st.markdown("### 🌍 Interactive Map")
+        bounds = rasterio.transform.array_bounds(damage.shape[0], damage.shape[1], transform)
+        center_lat = (bounds[1] + bounds[3]) / 2
+        center_lon = (bounds[0] + bounds[2]) / 2
 
         m = folium.Map(location=[center_lat, center_lon], zoom_start=12, control_scale=True)
         Fullscreen().add_to(m)
 
-            # Normalize and convert damage to image
-            damage_norm = np.clip(damage, 0, 1)
-            damage_uint8 = (damage_norm * 255).astype(np.uint8)
-            folium.raster_layers.ImageOverlay(
-                image=damage_uint8,
-                bounds=[[bounds[1], bounds[0]], [bounds[3], bounds[2]]],
-                opacity=0.6,
-                colormap=lambda x: (1, 0, 0, x),  # red heatmap
-                name="Damage",
-                interactive=True,
-            ).add_to(m)
+        damage_norm = np.clip(damage, 0, 1)
+        damage_uint8 = (damage_norm * 255).astype(np.uint8)
+        folium.raster_layers.ImageOverlay(
+            image=damage_uint8,
+            bounds=[[bounds[1], bounds[0]], [bounds[3], bounds[2]]],
+            opacity=0.6,
+            colormap=lambda x: (1, 0, 0, x),
+            name="Damage",
+            interactive=True,
+        ).add_to(m)
 
-            folium.LayerControl().add_to(m)
-            st_folium(m, width=800, height=500)
+        folium.LayerControl().add_to(m)
+        st_folium(m, width=800, height=500)
