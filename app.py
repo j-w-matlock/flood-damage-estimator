@@ -92,6 +92,7 @@ if st.button("🚀 Run Flood Damage Estimator"):
 
             st.session_state.result_path = result_path
             st.session_state.summaries = summaries
+            st.session_state.depth_paths = depth_paths
             st.session_state.diagnostics = diagnostics
 
         st.success("✅ Damage estimates complete!")
@@ -125,6 +126,7 @@ if st.session_state.result_path and st.session_state.summaries:
         # 📸 Overlap visualization + PNG export
         st.markdown("### 🖼️ Overlap Visualization (Crop / Depth / Damage)")
         damage_path = os.path.join(st.session_state.result_path.rsplit("/", 1)[0], f"damage_{flood}.tif")
+        depth_paths = st.session_state.get("depth_paths", [])
         depth_file = next((f for f in depth_paths if flood in os.path.basename(f)), None)
         if not depth_file:
             st.warning(f"Depth raster for {flood} not found.")
