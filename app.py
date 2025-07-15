@@ -105,7 +105,7 @@ st.sidebar.markdown("## 🔄 Session Controls")
 if st.sidebar.button("🔁 Reset Session"):
     for key in list(st.session_state.keys()):
         del st.session_state[key]
-    st.experimental_rerun()
+    st.rerun()
 if st.session_state.result_path and st.session_state.summaries:
     st.download_button("📥 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
 
