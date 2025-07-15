@@ -1,102 +1,107 @@
 import streamlit as st
 import os
-import json
-import tempfile
-import shutil
 import pandas as pd
 from utils.processing import process_flood_damage
-import rasterio
-import matplotlib.pyplot as plt
-import numpy as np
-import folium
-from folium.plugins import Fullscreen
-from streamlit_folium import st_folium
+from tkinter import Tk, filedialog
 
-# ✅ App started
 st.set_page_config(layout="wide")
-st.title("🌾 Agricultural Flood Damage Estimator")
 
-# 🧹 Reset at the top
-if st.button("🔄 Reset App"):
-    st.session_state.clear()
-    st.rerun()
-
-# 🔁 Session state
+if "crop_path" not in st.session_state:
+    st.session_state.crop_path = None
+if "depth_paths" not in st.session_state:
+    st.session_state.depth_paths = []
+if "output_dir" not in st.session_state:
+    st.session_state.output_dir = None
+if "summaries" not in st.session_state:
+    st.session_state.summaries = {}
 if "result_path" not in st.session_state:
     st.session_state.result_path = None
-    st.session_state.summaries = None
-    st.session_state.diagnostics = None
+if "diagnostics" not in st.session_state:
+    st.session_state.diagnostics = []
+if "crop_inputs" not in st.session_state:
+    st.session_state.crop_inputs = {}
+if "flood_metadata" not in st.session_state:
+    st.session_state.flood_metadata = {}
 
-# File uploads
-crop_file = st.file_uploader("🌾 Upload USDA Cropland Raster (GeoTIFF)", type=["tif", "img"])
-depth_files = st.file_uploader("🌊 Upload One or More Flood Depth Grids (GeoTIFF)", type="tif", accept_multiple_files=True)
-period_years = st.number_input("📆 Analysis Period (Years)", value=50, min_value=1)
-samples = st.number_input("🎲 Monte Carlo Samples", value=500, min_value=10)
+# Reset button at top
+if st.button("🔄 Reset App"):
+    st.session_state.crop_path = None
+    st.session_state.depth_paths = []
+    st.session_state.output_dir = None
+    st.session_state.summaries = {}
+    st.session_state.result_path = None
+    st.session_state.diagnostics = []
+    st.session_state.crop_inputs = {}
+    st.session_state.flood_metadata = {}
+    st.rerun()
 
-crop_inputs = {}
-flood_metadata = {}
+st.title("🌾 Agricultural Flood Damage Estimator")
 
-# -------------------------------------
-# 🌱 Crop Setup
-# -------------------------------------
-if crop_file:
-    crop_path = tempfile.mktemp(suffix=".tif")
-    with open(crop_path, "wb") as f:
-        f.write(crop_file.read())
-    with rasterio.open(crop_path) as src:
-        arr = src.read(1)
-    codes = pd.Series(arr.flatten()).value_counts().head(10)
-    st.markdown("### 🌱 Define Crop Values and Growing Seasons")
-    for code in codes.index:
-        val = st.number_input(f"Crop {code} — Value per Acre ($)", value=5500, step=100, key=f"val_{code}")
-        months = st.multiselect(f"Crop {code} — Growing Season (months 1–12)", options=list(range(1, 13)), default=list(range(4, 10)), key=f"grow_{code}")
-        crop_inputs[code] = {"Value": val, "GrowingSeason": months}
+st.markdown("### 📁 Step 1: Select Input Files")
+Tk().withdraw()
+if st.button("📂 Select CropScape Raster"):
+    st.session_state.crop_path = filedialog.askopenfilename(title="Select CropScape Raster", filetypes=[("GeoTIFF", "*.tif *.img")])
+    st.rerun()
 
-# -------------------------------------
-# 🌊 Flood Metadata Input
-# -------------------------------------
-if depth_files:
-    st.markdown("### ⚙️ Flood Raster Settings")
-    for i, f in enumerate(depth_files):
-        col1, col2 = st.columns(2)
-        with col1:
-            rp = st.number_input(f"Return Period for {f.name} (years)", min_value=1, value=100, key=f"rp_{i}")
-        with col2:
-            mo = st.number_input(f"Flood Month for {f.name} (1–12)", min_value=1, max_value=12, value=6, key=f"mo_{i}")
-        flood_metadata[f.name] = {"return_period": rp, "flood_month": mo}
+if st.session_state.crop_path:
+    st.success(f"✅ CropScape Raster: {os.path.basename(st.session_state.crop_path)}")
 
-# -------------------------------------
-# 🚀 Run Estimator
-# -------------------------------------
-if st.button("🚀 Run Flood Damage Estimator"):
-    if not crop_file or not depth_files:
-        st.error("Please upload cropland and depth raster files.")
-    elif not crop_inputs:
-        st.error("Please specify crop values and seasons.")
-    else:
-        with st.spinner("Processing flood damage estimates..."):
-            temp_dir = tempfile.mkdtemp()
-            depth_paths = []
-            for f in depth_files:
-                dp = os.path.join(temp_dir, f.name)
-                with open(dp, "wb") as out:
-                    out.write(f.read())
-                depth_paths.append(dp)
+if st.button("🌊 Select Flood Depth Raster(s)"):
+    st.session_state.depth_paths = list(filedialog.askopenfilenames(title="Select Depth Rasters", filetypes=[("GeoTIFF", "*.tif *.img")]))
+    st.rerun()
 
+if st.session_state.depth_paths:
+    for path in st.session_state.depth_paths:
+        st.markdown(f"✔️ {os.path.basename(path)}")
+
+if st.button("📁 Select Output Folder"):
+    st.session_state.output_dir = filedialog.askdirectory(title="Select Output Folder")
+    st.rerun()
+
+if st.session_state.output_dir:
+    st.success(f"📤 Output Folder: {st.session_state.output_dir}")
+
+if st.session_state.crop_path and st.session_state.depth_paths:
+    st.markdown("### 🌱 Step 2: Crop Values and Seasons")
+    unique_crops = sorted(list({int(c) for c in range(1, 256)}))
+    top_codes = [c for c in unique_crops if c in [1, 5, 12, 13, 14, 24, 36, 37, 41, 42]]
+    for code in top_codes:
+        val = st.number_input(f"💵 Value per acre for crop {code}", min_value=0.0, value=5500.0, key=f"val_{code}")
+        months = st.text_input(f"🌿 Growing season (comma-separated months 1-12) for crop {code}", value="4,5,6,7,8,9", key=f"months_{code}")
+        st.session_state.crop_inputs[code] = {
+            "Value": val,
+            "GrowingSeason": [int(m.strip()) for m in months.split(",") if m.strip().isdigit() and 1 <= int(m.strip()) <= 12]
+        }
+
+    st.markdown("### 📅 Step 3: Flood Metadata")
+    for path in st.session_state.depth_paths:
+        fname = os.path.basename(path)
+        month = st.number_input(f"Flood Month (1-12) for {fname}", min_value=1, max_value=12, value=6, key=f"month_{fname}")
+        rp = st.number_input(f"Return Period (years) for {fname}", min_value=1, value=100, key=f"rp_{fname}")
+        st.session_state.flood_metadata[fname] = {"flood_month": month, "return_period": rp}
+
+    st.markdown("### 🧮 Step 4: Run Damage Estimator")
+    period_years = st.number_input("Period of Analysis (years)", min_value=1, value=50)
+    samples = st.number_input("Monte Carlo Samples", min_value=1, value=500)
+    if st.button("🚀 Compute Damage Estimates"):
+        with st.spinner("Running damage calculations..."):
             try:
                 result_path, summaries, diagnostics = process_flood_damage(
-                    crop_path, depth_paths, temp_dir, period_years, samples, crop_inputs, flood_metadata
+                    st.session_state.crop_path,
+                    st.session_state.depth_paths,
+                    st.session_state.output_dir,
+                    period_years,
+                    samples,
+                    st.session_state.crop_inputs,
+                    st.session_state.flood_metadata
                 )
-                st.session_state.result_path = result_path
                 st.session_state.summaries = summaries
+                st.session_state.result_path = result_path
                 st.session_state.diagnostics = diagnostics
                 st.success("✅ Damage estimates complete!")
             except Exception as e:
                 st.error(f"❌ Error during processing: {e}")
 
-# -------------------------------------
-# 📤 Show Results
-# -------------------------------------
 if st.session_state.result_path and st.session_state.summaries:
     st.download_button("📥 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
 
@@ -104,41 +109,14 @@ if st.session_state.result_path and st.session_state.summaries:
     if st.session_state.diagnostics:
         st.dataframe(pd.DataFrame(st.session_state.diagnostics))
     else:
-        st.info("✅ No diagnostics warnings.")
+        st.info("✅ No issues detected in damage calculation.")
 
     for flood, df in st.session_state.summaries.items():
         st.subheader(f"📊 {flood} Summary")
+        if df.empty:
+            st.info("ℹ️ No crop damage estimated for this flood scenario.")
+            continue
         st.dataframe(df)
-
-        if "CropCode" in df.columns and "DollarsLost" in df.columns:
-            fig, ax = plt.subplots()
-            df.plot(kind="bar", x="CropCode", y="DollarsLost", ax=ax, legend=False)
-            ax.set_ylabel("Total Loss ($)")
-            ax.set_title(f"Crop Losses for {flood}")
+        if "CropCode" in df.columns and "EAD" in df.columns:
+            fig = df.plot(kind="bar", x="CropCode", y="EAD", title=f"Expected Annual Damages for {flood}").get_figure()
             st.pyplot(fig)
-
-        damage_path = os.path.join(os.path.dirname(st.session_state.result_path), f"damage_{flood}.tif")
-        if os.path.exists(damage_path):
-            with rasterio.open(damage_path) as dsrc:
-                damage = dsrc.read(1)
-                transform = dsrc.transform
-            fig, ax = plt.subplots()
-            ax.imshow(np.where(damage > 0.01, damage, np.nan), cmap="Reds", vmin=0, vmax=1)
-            ax.set_title("Damage Footprint")
-            ax.axis("off")
-            st.pyplot(fig)
-
-            bounds = rasterio.transform.array_bounds(damage.shape[0], damage.shape[1], transform)
-            center_lat = (bounds[1] + bounds[3]) / 2
-            center_lon = (bounds[0] + bounds[2]) / 2
-            m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
-            Fullscreen().add_to(m)
-            folium.raster_layers.ImageOverlay(
-                image=(damage * 255).astype(np.uint8),
-                bounds=[[bounds[1], bounds[0]], [bounds[3], bounds[2]]],
-                opacity=0.6,
-                name="Damage",
-            ).add_to(m)
-            folium.LayerControl().add_to(m)
-            st.markdown("### 🗺️ Interactive Damage Map")
-            st_folium(m, width=800, height=500)

@@ -69,7 +69,7 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
                 diagnostics.append({"Flood": label, "CropCode": code, "Note": "Out of growing season"})
                 continue
             damage[mask & (depth_data > 0)] = 1.0
-            flooded_acres[code] = np.sum(mask) * pixel_area
+            flooded_acres[code] = np.sum(mask & (depth_data > 0)) * pixel_area
 
         out_raster_path = os.path.join(output_dir, f"damage_{label}.tif")
         meta = depth_meta
@@ -80,7 +80,8 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         summary = []
         for code, acres in flooded_acres.items():
             mask = crop_data == code
-            avg_damage = float(np.mean(damage[mask]))
+            flooded_mask = mask & (depth_data > 0)
+            avg_damage = float(np.mean(damage[flooded_mask]))
             value = crop_inputs[code]["Value"]
             loss = avg_damage * acres * value
             freq = 1.0 / return_period
@@ -91,7 +92,8 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
                 "AvgDamage": round(avg_damage, 3),
                 "DollarsLost": round(loss, 2),
                 "EAD": round(loss * freq, 2),
-                "RP": return_period
+                "RP": return_period,
+                "DirectDamage": round(loss, 2)
             })
 
             for s in range(samples):
@@ -126,7 +128,8 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
                 summary_rows.append({
                     "Flood": flood,
                     "Crop": row["CropCode"],
-                    "EAD": row["EAD"]
+                    "EAD": row["EAD"],
+                    "DirectDamage": row["DirectDamage"]
                 })
         pd.DataFrame(summary_rows).to_excel(writer, sheet_name="EAD_Summary", index=False)
 
@@ -167,6 +170,18 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
     chart.add_data(data, titles_from_data=True)
     chart.set_categories(cats)
     ws.add_chart(chart, "G2")
+
+    ws2 = wb["EAD_Summary"]
+    chart2 = BarChart()
+    chart2.title = "Direct Damages (No Frequency Adjustment)"
+    chart2.y_axis.title = "Total Damage ($)"
+    chart2.x_axis.title = "Flood"
+    data2 = Reference(ws2, min_col=3, min_row=1, max_col=4, max_row=ws2.max_row)
+    cats2 = Reference(ws2, min_col=1, min_row=2, max_row=ws2.max_row)
+    chart2.add_data(data2, titles_from_data=True)
+    chart2.set_categories(cats2)
+    ws2.add_chart(chart2, "G2")
+
     wb.save(excel_path)
 
     return excel_path, all_summaries, diagnostics
