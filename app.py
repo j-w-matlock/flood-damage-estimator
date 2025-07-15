@@ -25,7 +25,7 @@ for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths
 
 # Reset button
 if st.button("🔁 Reset App"):
-    for key in st.session_state.keys():
+    for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
 
@@ -97,6 +97,7 @@ if st.button("🚀 Run Flood Damage Estimator"):
                 st.session_state.summaries = summaries
                 st.session_state.diagnostics = diagnostics
                 st.success("✅ Damage estimates complete!")
+                st.rerun()
             except Exception as e:
                 st.error(f"❌ Error during processing: {e}")
 
@@ -124,3 +125,4 @@ if st.session_state.result_path and st.session_state.summaries:
             ax.set_ylabel("Expected Annual Damage ($)")
             ax.set_title(f"EAD per Crop for {flood}")
             st.pyplot(fig)
+

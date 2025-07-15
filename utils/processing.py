@@ -23,93 +23,83 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         return_period = metadata["return_period"]
         flood_month = metadata["flood_month"]
 
-        print(f"\n🌊 Processing {label} (RP {return_period}, Month {flood_month})")
+        print(f"\n🌊 Processing {label} (RP={return_period}, Month={flood_month})")
 
-        try:
-            with rasterio.open(crop_raster_path) as crop_src:
-                crop_shape = (crop_src.height, crop_src.width)
-                crop_scale = 0.1 if max(crop_src.width, crop_src.height) > 3000 else 0.25 if max(crop_src.width, crop_src.height) > 2000 else 1.0
-                crop_out_shape = (int(crop_src.height * crop_scale), int(crop_src.width * crop_scale))
-                crop_data = crop_src.read(1, out_shape=crop_out_shape, resampling=Resampling.nearest)
-                crop_meta = crop_src.meta.copy()
-                crop_meta.update({"height": crop_out_shape[0], "width": crop_out_shape[1]})
-                crop_meta = crop_src.meta.copy()
+        # Align rasters
+        with rasterio.open(crop_raster_path) as crop_src:
+            crop_arr = crop_src.read(1)
+            crop_profile = crop_src.profile
 
-            with rasterio.open(depth_path) as depth_src:
-                depth_shape = (depth_src.height, depth_src.width)
-                depth_scale = 0.1 if max(depth_src.width, depth_src.height) > 3000 else 0.25 if max(depth_src.width, depth_src.height) > 2000 else 1.0
-                depth_out_shape = (int(depth_src.height * depth_scale), int(depth_src.width * depth_scale))
-                depth_data = depth_src.read(1, out_shape=depth_out_shape, resampling=Resampling.average)
+        with rasterio.open(depth_path) as depth_src:
+            depth_arr = depth_src.read(1, out_shape=(1, crop_arr.shape[0], crop_arr.shape[1]), resampling=Resampling.bilinear)
 
-            if crop_data.shape != depth_data.shape:
-                raise ValueError(f"Mismatched raster dimensions: crop={crop_data.shape}, depth={depth_data.shape}")
+        damage_arr = np.zeros_like(crop_arr, dtype=float)
+        summary_rows = []
 
-            unique_crops = np.unique(crop_data)
-            summary = []
+        for crop_code, props in crop_inputs.items():
+            mask = crop_arr == crop_code
+            if not np.any(mask):
+                diagnostics.append({"Flood": label, "CropCode": crop_code, "Issue": "Crop not present in raster"})
+                continue
 
-            for crop_code in unique_crops:
-                if crop_code == 0 or crop_code not in crop_inputs:
-                    diagnostics.append({"Flood": label, "CropCode": int(crop_code), "Note": "Skipped - not in crop inputs or code is 0"})
-                    continue
+            value_per_acre = props["Value"]
+            growing_season = props["GrowingSeason"]
+            if flood_month not in growing_season:
+                diagnostics.append({"Flood": label, "CropCode": crop_code, "Issue": "Out of growing season"})
+                continue
 
-                mask = crop_data == crop_code
-                depths = depth_data[mask]
-                if depths.size == 0 or np.all(depths <= 0):
-                    diagnostics.append({"Flood": label, "CropCode": int(crop_code), "Note": "Skipped - no flooding detected"})
-                    continue
+            # Simulate damage using Monte Carlo
+            loss_samples = []
+            for _ in range(samples):
+                perturb = depth_arr + np.random.normal(0, 0.1, size=depth_arr.shape)  # Simulate variation
+                crop_depth = np.where(mask, perturb, 0)
+                damage_ratio = np.clip(crop_depth / 6.0, 0, 1)  # Linear placeholder
+                loss = damage_ratio * value_per_acre
+                total_loss = np.sum(loss)
+                loss_samples.append(total_loss)
 
-                # Simulate uncertainty
-                all_estimates = []
-                for _ in range(samples):
-                    perturb_depth = depths + np.random.normal(0, 0.1, size=depths.shape)
-                    perturb_depth = np.clip(perturb_depth, 0, None)
-                    damage_pct = np.clip(perturb_depth / 6.0, 0, 1)  # Linear placeholder
-                    avg_pct = damage_pct.mean()
-                    all_estimates.append(avg_pct)
+            mean_loss = np.mean(loss_samples)
+            p5 = np.percentile(loss_samples, 5)
+            p95 = np.percentile(loss_samples, 95)
+            damage_arr = np.where(mask, damage_ratio, damage_arr)
 
-                mean_pct = np.mean(all_estimates)
-                p05 = np.percentile(all_estimates, 5)
-                p95 = np.percentile(all_estimates, 95)
+            summary_rows.append({
+                "CropCode": crop_code,
+                "ValuePerAcre": value_per_acre,
+                "MeanLoss": round(mean_loss, 2),
+                "Loss_5th": round(p5, 2),
+                "Loss_95th": round(p95, 2),
+                "DollarsLost": round(mean_loss, 2),
+                "EAD": round(mean_loss / period_years, 2)
+            })
 
-                acres = mask.sum() * 0.222394  # 30m pixels → acres
-                value = crop_inputs[crop_code]["Value"]
-                season = crop_inputs[crop_code]["GrowingSeason"]
-                season_factor = 1.0 if flood_month in season else 0.0
+        summary_df = pd.DataFrame(summary_rows)
+        all_summaries[label] = summary_df
 
-                loss = acres * value * mean_pct * season_factor
+        # Save damage raster
+        damage_output_path = os.path.join(output_dir, f"damage_{label}.tif")
+        with rasterio.open(damage_output_path, "w", **crop_profile) as dst:
+            dst.write(damage_arr, 1)
 
-                summary.append({
-                    "CropCode": crop_code,
-                    "Acres": acres,
-                    "MeanPctDamage": mean_pct,
-                    "LossPerAcre": value * mean_pct,
-                    "DollarsLost": loss,
-                    "SeasonalFactor": season_factor,
-                    "P05": p05,
-                    "P95": p95
-                })
-
-            df = pd.DataFrame(summary)
-            all_summaries[label] = df
-
-            damage_pct = np.clip(depth_data / 6.0, 0, 1)
-            damage_raster = damage_pct * np.isin(crop_data, list(crop_inputs.keys()))
-
-            out_meta = crop_meta.copy()
-            out_meta.update({"dtype": "float32", "count": 1})
-            damage_path = os.path.join(output_dir, f"damage_{label}.tif")
-
-            with rasterio.open(damage_path, "w", **out_meta) as dst:
-                dst.write(damage_raster.astype(np.float32), 1)
-
-        except Exception as e:
-            diagnostics.append({"Flood": label, "Error": str(e), "CropSize": crop_shape, "DepthSize": depth_shape})
-            continue
-
+    # Export Excel summary
     excel_path = os.path.join(output_dir, "ag_damage_summary.xlsx")
     with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
-        for name, df in all_summaries.items():
-            df.to_excel(writer, sheet_name=name, index=False)
+        for flood, df in all_summaries.items():
+            df.to_excel(writer, sheet_name=flood, index=False)
         pd.DataFrame(diagnostics).to_excel(writer, sheet_name="Diagnostics", index=False)
+
+        # Add EAD summary chart
+        workbook = writer.book
+        for flood in all_summaries:
+            sheet = workbook[flood]
+            chart = BarChart()
+            chart.title = "Expected Annual Damage by Crop"
+            chart.x_axis.title = "CropCode"
+            chart.y_axis.title = "EAD ($/yr)"
+            data = Reference(sheet, min_col=8, min_row=1, max_row=sheet.max_row)
+            cats = Reference(sheet, min_col=1, min_row=2, max_row=sheet.max_row)
+            chart.add_data(data, titles_from_data=True)
+            chart.set_categories(cats)
+            sheet.add_chart(chart, "K2")
 
     return excel_path, all_summaries, diagnostics
