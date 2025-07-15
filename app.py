@@ -124,8 +124,11 @@ if st.session_state.result_path and st.session_state.summaries:
 
         # 📸 Overlap visualization + PNG export
         st.markdown("### 🖼️ Overlap Visualization (Crop / Depth / Damage)")
-        damage_path = os.path.join(temp_dir, f"damage_{flood}.tif")
-        depth_file = [f for f in depth_paths if flood in os.path.basename(f)][0]
+        damage_path = os.path.join(st.session_state.result_path.rsplit("/", 1)[0], f"damage_{flood}.tif")
+        depth_file = next((f for f in depth_paths if flood in os.path.basename(f)), None)
+        if not depth_file:
+            st.warning(f"Depth raster for {flood} not found.")
+            continue
 
         with rasterio.open(damage_path) as dsrc:
             damage = dsrc.read(1)
