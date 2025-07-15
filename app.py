@@ -1,6 +1,8 @@
 import streamlit as st
 import os
+import numpy as np
 import pandas as pd
+import rasterio
 from utils.processing import process_flood_damage
 
 # 🔐 Safe tkinter import
@@ -28,6 +30,8 @@ if "crop_inputs" not in st.session_state:
     st.session_state.crop_inputs = {}
 if "flood_metadata" not in st.session_state:
     st.session_state.flood_metadata = {}
+if "detected_crop_codes" not in st.session_state:
+    st.session_state.detected_crop_codes = []
 
 # Reset button at top
 if st.button("🔄 Reset App"):
@@ -39,6 +43,7 @@ if st.button("🔄 Reset App"):
     st.session_state.diagnostics = []
     st.session_state.crop_inputs = {}
     st.session_state.flood_metadata = {}
+    st.session_state.detected_crop_codes = []
     st.rerun()
 
 st.title("🌾 Agricultural Flood Damage Estimator")
@@ -53,8 +58,14 @@ if tk_available:
 if tk_available and st.button("📂 Select CropScape Raster"):
     try:
         Tk().withdraw()
-        st.session_state.crop_path = filedialog.askopenfilename(title="Select CropScape Raster", filetypes=[("GeoTIFF", "*.tif *.img")])
-        st.rerun()
+        crop_path = filedialog.askopenfilename(title="Select CropScape Raster", filetypes=[("GeoTIFF", "*.tif *.img")])
+        if crop_path:
+            st.session_state.crop_path = crop_path
+            with rasterio.open(crop_path) as src:
+                crop_data = src.read(1)
+                unique_codes = list(np.unique(crop_data))
+                st.session_state.detected_crop_codes = sorted([int(c) for c in unique_codes if c != 0])
+            st.rerun()
     except:
         st.error("Could not open file dialog. Tkinter may not be supported.")
 
@@ -84,11 +95,9 @@ if tk_available and st.button("📁 Select Output Folder"):
 if st.session_state.output_dir:
     st.success(f"📤 Output Folder: {st.session_state.output_dir}")
 
-if st.session_state.crop_path and st.session_state.depth_paths:
+if st.session_state.crop_path and st.session_state.depth_paths and st.session_state.detected_crop_codes:
     st.markdown("### 🌱 Step 2: Crop Values and Seasons")
-    unique_crops = sorted(list({int(c) for c in range(1, 256)}))
-    top_codes = [c for c in unique_crops if c in [1, 5, 12, 13, 14, 24, 36, 37, 41, 42]]
-    for code in top_codes:
+    for code in st.session_state.detected_crop_codes:
         val = st.number_input(f"💵 Value per acre for crop {code}", min_value=0.0, value=5500.0, key=f"val_{code}")
         months = st.text_input(f"🌿 Growing season (comma-separated months 1-12) for crop {code}", value="4,5,6,7,8,9", key=f"months_{code}")
         st.session_state.crop_inputs[code] = {
