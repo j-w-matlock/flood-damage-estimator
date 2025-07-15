@@ -141,12 +141,28 @@ if st.session_state.result_path and st.session_state.summaries:
             continue
 
         with rasterio.open(damage_path) as dsrc:
-            damage = dsrc.read(1)
+            scale = 0.25 if max(dsrc.width, dsrc.height) > 2000 else 1.0
+            out_shape = (int(dsrc.height * scale), int(dsrc.width * scale))
+            damage = dsrc.read(
+                1,
+                out_shape=out_shape,
+                resampling=rasterio.enums.Resampling.average
+            )
+            transform = dsrc.transform * dsrc.transform.scale(
+                dsrc.width / out_shape[1],
+                dsrc.height / out_shape[0]
+            )
             transform = dsrc.transform
             crs = dsrc.crs
 
         with rasterio.open(depth_file) as depth_src:
-            depth = depth_src.read(1)
+            scale = 0.25 if max(depth_src.width, depth_src.height) > 2000 else 1.0
+            out_shape = (int(depth_src.height * scale), int(depth_src.width * scale))
+            depth = depth_src.read(
+                1,
+                out_shape=out_shape,
+                resampling=rasterio.enums.Resampling.average
+            )
 
         crop_arr = (damage > 0).astype(int)
 
