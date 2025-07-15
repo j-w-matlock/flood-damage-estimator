@@ -15,6 +15,7 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
     os.makedirs(output_dir, exist_ok=True)
     all_summaries = {}
     diagnostics = []
+    mc_rows = []
 
     for depth_path in depth_raster_paths:
         label = os.path.splitext(os.path.basename(depth_path))[0]
@@ -49,18 +50,23 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
                 continue
 
             # Simulate damage using Monte Carlo
-            loss_samples = []
-            for _ in range(samples):
-                perturb = depth_arr + np.random.normal(0, 0.1, size=depth_arr.shape)  # Simulate variation
-                crop_depth = np.where(mask, perturb, 0)
-                damage_ratio = np.clip(crop_depth / 6.0, 0, 1)  # Linear placeholder
+            for s in range(samples):
+                perturbed_depth = depth_arr + np.random.normal(0, 0.1, size=depth_arr.shape)
+                crop_depth = np.where(mask, perturbed_depth, 0)
+                damage_ratio = np.clip(crop_depth / 6.0, 0, 1)
                 loss = damage_ratio * value_per_acre
                 total_loss = np.sum(loss)
-                loss_samples.append(total_loss)
+                mc_rows.append({
+                    "Flood": label,
+                    "Crop": crop_code,
+                    "Sim": s + 1,
+                    "Loss": total_loss
+                })
 
-            mean_loss = np.mean(loss_samples)
-            p5 = np.percentile(loss_samples, 5)
-            p95 = np.percentile(loss_samples, 95)
+            mean_loss = np.mean([r["Loss"] for r in mc_rows if r["Flood"] == label and r["Crop"] == crop_code])
+            p5 = np.percentile([r["Loss"] for r in mc_rows if r["Flood"] == label and r["Crop"] == crop_code], 5)
+            p95 = np.percentile([r["Loss"] for r in mc_rows if r["Flood"] == label and r["Crop"] == crop_code], 95)
+
             damage_arr = np.where(mask, damage_ratio, damage_arr)
 
             summary_rows.append({
@@ -70,7 +76,7 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
                 "Loss_5th": round(p5, 2),
                 "Loss_95th": round(p95, 2),
                 "DollarsLost": round(mean_loss, 2),
-                "EAD": round(mean_loss / return_period, 2)
+                "EAD": round((1.0 / return_period) * mean_loss, 2)
             })
 
         summary_df = pd.DataFrame(summary_rows)
@@ -87,6 +93,7 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         for flood, df in all_summaries.items():
             df.to_excel(writer, sheet_name=flood, index=False)
         pd.DataFrame(diagnostics).to_excel(writer, sheet_name="Diagnostics", index=False)
+        pd.DataFrame(mc_rows).to_excel(writer, sheet_name="MonteCarlo", index=False)
 
         # Add EAD summary chart
         workbook = writer.book
