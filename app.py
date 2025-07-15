@@ -34,6 +34,9 @@ if "result_path" not in st.session_state:
     st.session_state.result_path = None
     st.session_state.summaries = None
     st.session_state.diagnostics = None
+    st.session_state.depth_paths = []
+    st.session_state.summaries = None
+    st.session_state.diagnostics = None
 
 # File uploads and settings
 crop_file = st.file_uploader("🌾 Upload USDA Cropland Raster (GeoTIFF)", type=["tif", "img"])
@@ -98,6 +101,11 @@ if st.button("🚀 Run Flood Damage Estimator"):
         st.success("✅ Damage estimates complete!")
 
 # 🎯 Show results if available
+st.sidebar.markdown("## 🔄 Session Controls")
+if st.sidebar.button("🔁 Reset Session"):
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.experimental_rerun()
 if st.session_state.result_path and st.session_state.summaries:
     st.download_button("📥 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
 
@@ -152,7 +160,8 @@ if st.session_state.result_path and st.session_state.summaries:
         for ax in axs:
             ax.axis("off")
 
-        overlap_path = os.path.join(temp_dir, f"overlap_{flood}.png")
+        overlap_dir = os.path.dirname(st.session_state.result_path)
+        overlap_path = os.path.join(overlap_dir, f"overlap_{flood}.png")
         fig.savefig(overlap_path, bbox_inches="tight")
         st.pyplot(fig)
         with open(overlap_path, "rb") as f:
