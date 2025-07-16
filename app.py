@@ -3,53 +3,58 @@ import os
 import tempfile
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from collections import Counter
-from utils.processing import process_flood_damage, run_monte_carlo
+import matplotlib.pyplot as plt
+import rasterio
+from utils.processing import process_flood_damage
 
 st.set_page_config(layout="wide")
 st.title("🌾 Agricultural Flood Damage Estimator")
 
-# Session state init
+# Initialize session state
 for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths", "monte_carlo_results"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
-# 🔁 Reset App
+# 🔁 Reset
 if st.button("🔁 Reset App"):
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
 
-# 📁 Uploads
-crop_file = st.file_uploader("🌾 Upload USDA CropScape Raster (GeoTIFF)", type=["tif", "img"])
-depth_files = st.file_uploader("🌊 Upload One or More Flood Depth Grids (GeoTIFF)", type="tif", accept_multiple_files=True)
-period_years = st.number_input("📆 Analysis Period (Years)", value=50, min_value=1)
-samples = st.number_input("🎲 Monte Carlo Samples", value=100, min_value=10)
+# File inputs
+crop_file = st.file_uploader("🌾 Upload USDA CropScape Raster", type=["tif", "img"])
+depth_files = st.file_uploader("🌊 Upload Flood Depth Raster(s)", type="tif", accept_multiple_files=True)
+
+period_years = st.number_input("📆 Period of Analysis (Years)", value=50, min_value=1)
+samples = st.number_input("🔁 Sampling Iterations (for Direct Damage Averaging)", value=50, min_value=10)
 
 crop_inputs = {}
 flood_metadata = {}
 
-# 🌱 Crop setup
+# Crop setup
 if crop_file:
     crop_path = tempfile.NamedTemporaryFile(delete=False, suffix=".tif").name
     with open(crop_path, "wb") as f:
         f.write(crop_file.read())
     st.session_state["crop_path"] = crop_path
 
-    import rasterio
     with rasterio.open(crop_path) as src:
         arr = src.read(1)
     counts = Counter(arr.flatten())
-    most_common = [c for c, _ in counts.most_common(10) if c != 0]
+    top_crops = [c for c, _ in counts.most_common(10) if c != 0]
 
-    st.markdown("### 🌱 Define Crop Values and Seasons")
-    for code in most_common:
-        val = st.number_input(f"Crop {code} — Value per Acre ($)", value=5500, step=100, key=f"val_{code}")
-        months = st.multiselect(f"Crop {code} — Growing Season (months 1–12)", options=list(range(1, 13)), default=list(range(4, 10)), key=f"grow_{code}")
-        crop_inputs[code] = {"Value": val, "GrowingSeason": months}
+    st.markdown("### 🌱 Define Crop Values and Growing Seasons")
+    for code in top_crops:
+        val = st.number_input(f"Crop {code} – $/Acre", value=5500, step=100, key=f"val_{code}")
+        months = st.multiselect(f"Crop {code} – Growing Months (1–12)", options=list(range(1, 13)),
+                                default=list(range(4, 10)), key=f"grow_{code}")
+        if months:
+            crop_inputs[code] = {"Value": val, "GrowingSeason": months}
+        else:
+            st.warning(f"⚠️ Crop {code} has no growing months.")
 
-# ⚙️ Flood settings
+# Flood metadata
 if depth_files:
     st.markdown("### ⚙️ Flood Raster Settings")
     depth_paths = []
@@ -58,22 +63,24 @@ if depth_files:
         with open(temp_path, "wb") as out:
             out.write(f.read())
         depth_paths.append(temp_path)
-        rp = st.number_input(f"Return Period for {f.name} (years)", min_value=1, value=100, key=f"rp_{i}")
-        mo = st.number_input(f"Flood Month for {f.name} (1–12)", min_value=1, max_value=12, value=6, key=f"mo_{i}")
+
+        rp = st.number_input(f"Return Period – {f.name}", min_value=1, value=100, key=f"rp_{i}")
+        mo = st.number_input(f"Flood Month – {f.name}", min_value=1, max_value=12, value=6, key=f"mo_{i}")
         flood_metadata[f.name] = {"return_period": rp, "flood_month": mo}
+
     st.session_state["depth_paths"] = depth_paths
 
-# 🚀 Run tool
+# Run model
 if st.button("🚀 Run Flood Damage Estimator"):
     if not crop_file or not depth_files:
-        st.error("❌ Please upload both cropland and depth rasters.")
+        st.error("Upload both a CropScape raster and one or more depth rasters.")
     elif not crop_inputs:
-        st.error("❌ Specify crop values and growing seasons.")
+        st.error("Set at least one crop value and growing season.")
     else:
-        with st.spinner("🛠️ Processing flood damage estimates..."):
+        with st.spinner("Running base damage calculation..."):
             temp_dir = tempfile.mkdtemp()
             try:
-                result_path, summaries, diagnostics = process_flood_damage(
+                result_path, summaries, diagnostics, _ = process_flood_damage(
                     st.session_state.crop_path,
                     st.session_state.depth_paths,
                     temp_dir,
@@ -85,53 +92,71 @@ if st.button("🚀 Run Flood Damage Estimator"):
                 st.session_state.result_path = result_path
                 st.session_state.summaries = summaries
                 st.session_state.diagnostics = diagnostics
-                st.success("✅ Damage estimates complete! Scroll down to view results.")
+                st.session_state.monte_carlo_results = None
+                st.success("✅ Direct damage and EAD results ready!")
             except Exception as e:
-                st.error(f"❌ Error during processing: {e}")
+                st.error(f"❌ Error: {e}")
 
-# 📊 Results and Charts
-if st.session_state.result_path and st.session_state.summaries:
-    st.download_button("📥 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
+# Results tabs
+if st.session_state.summaries:
+    tab1, tab2 = st.tabs(["📊 Direct EAD Results", "📈 Monte Carlo (Optional)"])
 
-    st.markdown("## 🧪 Diagnostics Log")
-    if st.session_state.diagnostics:
-        st.dataframe(pd.DataFrame(st.session_state.diagnostics))
-    else:
-        st.info("✅ No issues detected.")
+    with tab1:
+        st.download_button("📥 Download Excel Summary", open(st.session_state.result_path, "rb").read(),
+                           file_name="ag_damage_summary.xlsx")
 
-    for flood, df in st.session_state.summaries.items():
-        st.subheader(f"📊 {flood} Summary")
-        if not df.empty:
+        if st.session_state.diagnostics:
+            st.markdown("### 🧪 Diagnostics")
+            st.dataframe(pd.DataFrame(st.session_state.diagnostics))
+
+        for flood, df in st.session_state.summaries.items():
+            st.subheader(f"{flood}")
+            df["EAD"] = (df["DollarsLost"] / flood_metadata[flood + '.tif']["return_period"]).round(2)
             st.dataframe(df)
 
             if "CropCode" in df.columns and "EAD" in df.columns:
                 fig, ax = plt.subplots()
-                df.plot(kind="bar", x="CropCode", y="EAD", ax=ax, legend=False)
-                ax.set_ylabel("Expected Annual Damage ($)")
-                ax.set_title(f"EAD per Crop for {flood}")
+                df.plot(kind="bar", x="CropCode", y="EAD", ax=ax)
+                ax.set_title("Expected Annual Damage (EAD)")
+                ax.set_ylabel("$/year")
                 st.pyplot(fig)
 
-    # ➕ Optional Monte Carlo
-    st.markdown("## 🎲 Monte Carlo Simulation (Optional)")
-if "CropCode" in df.columns and "EAD" in df.columns:
-    try:
-        plot_df = df[["CropCode", "EAD"]].dropna()
-        plot_df["EAD"] = pd.to_numeric(plot_df["EAD"], errors="coerce")
-        plot_df = plot_df.dropna()
-        fig, ax = plt.subplots()
-        plot_df.plot(kind="bar", x="CropCode", y="EAD", ax=ax, legend=False)
-        ax.set_ylabel("Expected Annual Damage ($)")
-        ax.set_title(f"EAD per Crop for {flood}")
-        st.pyplot(fig)
-    except Exception as e:
-        st.warning(f"⚠️ Could not generate chart for {flood}: {e}")
+    with tab2:
+        st.markdown("### 🧮 Optional Monte Carlo Simulation")
+        if st.button("▶️ Run Monte Carlo Simulation"):
+            mc_results = {}
+            for flood, df in st.session_state.summaries.items():
+                mc_rows = []
+                for _, row in df.iterrows():
+                    mean = row["DirectDamage_Mean"]
+                    std = row["DirectDamage_Std"]
+                    sims = np.random.normal(mean, std, size=1000)
+                    eads = sims * (1 / flood_metadata[flood + '.tif']["return_period"])
+                    mc_rows.append({
+                        "CropCode": row["CropCode"],
+                        "EAD_Mean": round(np.mean(eads), 2),
+                        "EAD_5th": round(np.percentile(eads, 5), 2),
+                        "EAD_95th": round(np.percentile(eads, 95), 2)
+                    })
+                mc_results[flood] = pd.DataFrame(mc_rows)
+            st.session_state.monte_carlo_results = mc_results
+            st.success("✅ Monte Carlo simulation complete!")
 
-        for flood, df in st.session_state.monte_carlo_results.items():
-            st.subheader(f"📊 {flood} – Monte Carlo Results")
-            st.dataframe(df)
+        if st.session_state.monte_carlo_results:
+            for flood, df in st.session_state.monte_carlo_results.items():
+                st.subheader(f"{flood} – Monte Carlo EAD")
+                st.dataframe(df)
 
-            fig, ax = plt.subplots()
-            df.plot(kind="bar", x="CropCode", y="EAD_MC", ax=ax, legend=False)
-            ax.set_ylabel("EAD ($/yr) with Uncertainty")
-            ax.set_title(f"Monte Carlo EAD for {flood}")
-            st.pyplot(fig)
+                fig, ax = plt.subplots()
+                df.plot(kind="bar", x="CropCode", y="EAD_Mean", ax=ax)
+                ax.set_title("Monte Carlo EAD (Mean)")
+                ax.set_ylabel("$/year")
+                st.pyplot(fig)
+
+            # Export MC results
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+                with pd.ExcelWriter(tmp.name, engine="openpyxl") as writer:
+                    for flood, df in st.session_state.monte_carlo_results.items():
+                        df.to_excel(writer, sheet_name=flood, index=False)
+                st.download_button("📤 Download Monte Carlo Results", open(tmp.name, "rb").read(),
+                                   file_name="monte_carlo_EAD.xlsx")
