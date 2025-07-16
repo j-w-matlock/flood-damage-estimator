@@ -12,7 +12,7 @@ st.set_page_config(layout="wide")
 st.title("🌾 Agricultural Flood Damage Estimator")
 
 # Session state init
-for key in ["result_path", "summaries", "diagnostics", "monte_carlo_results", "crop_path", "depth_paths"]:
+for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
@@ -26,7 +26,7 @@ if st.button("🔁 Reset App"):
 crop_file = st.file_uploader("🌾 USDA Cropland Raster", type=["tif", "img"])
 depth_files = st.file_uploader("🌊 Flood Depth Grids", type=["tif"], accept_multiple_files=True)
 period_years = st.number_input("📆 Analysis Period (Years)", min_value=1, value=50)
-samples = st.number_input("🎲 Monte Carlo Samples", min_value=10, value=100)
+samples = st.number_input("🎲 Iterations", min_value=10, value=100)
 depth_sd = st.number_input("± Depth Uncertainty (ft)", value=0.1)
 value_sd = st.number_input("± Crop Value Uncertainty (%)", value=10)
 
@@ -86,42 +86,3 @@ if st.button("🚀 Run Flood Damage Estimator"):
                 st.success("✅ Direct damage analysis complete.")
             except Exception as e:
                 st.error(f"❌ Error: {e}")
-
-# Monte Carlo
-if st.session_state.summaries and st.button("📈 Run Monte Carlo Analysis"):
-    with st.spinner("Running uncertainty analysis..."):
-        try:
-            results = run_monte_carlo(
-                st.session_state.summaries,
-                flood_metadata,
-                samples,
-                value_sd,
-                depth_sd
-            )
-            st.session_state.monte_carlo_results = results
-            st.success("🎲 Monte Carlo complete.")
-        except Exception as e:
-            st.error(f"❌ Monte Carlo error: {e}")
-
-# Display Results
-if st.session_state.result_path:
-    st.download_button("📥 Download Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
-
-    if st.session_state.diagnostics:
-        st.markdown("### 🧪 Diagnostics")
-        st.dataframe(pd.DataFrame(st.session_state.diagnostics))
-
-    for flood, df in st.session_state.summaries.items():
-        st.subheader(f"📊 {flood} – Direct Damage")
-        st.dataframe(df)
-        if "CropCode" in df.columns:
-            fig, ax = plt.subplots()
-            df.plot(kind="bar", x="CropCode", y="EAD", ax=ax, legend=False)
-            ax.set_title(f"{flood} – EAD by Crop")
-            st.pyplot(fig)
-
-# Monte Carlo Results
-if st.session_state.monte_carlo_results:
-    for flood, df_mc in st.session_state.monte_carlo_results.items():
-        st.subheader(f"📈 {flood} – Monte Carlo Summary")
-        st.dataframe(df_mc)
