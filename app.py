@@ -125,31 +125,3 @@ if st.session_state.result_path and "damage_rasters" in st.session_state:
             file_name=os.path.basename(st.session_state.result_path),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
-    # Export PNG map previews
-    st.subheader("🖼️ Export Raster Map Images")
-    for name, raster_path in st.session_state.damage_rasters.items():
-        try:
-            with rasterio.open(raster_path) as src:
-                damage_arr = src.read(1)
-                masked = np.ma.masked_where(damage_arr == 0, damage_arr)
-                fig, ax = plt.subplots(figsize=(6, 4))
-                cmap = plt.cm.get_cmap("Reds")
-                im = ax.imshow(masked, cmap=cmap)
-                ax.set_title(f"Crop Damage – {name}")
-                plt.colorbar(im, ax=ax, label="% Damage")
-
-                # Save to PNG temp file
-                img_tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                fig.savefig(img_tmp.name, bbox_inches="tight")
-                plt.close(fig)
-
-                with open(img_tmp.name, "rb") as img_file:
-                    st.download_button(
-                        label=f"🖼️ Download {name} PNG",
-                        data=img_file,
-                        file_name=f"{name}_damage.png",
-                        mime="image/png"
-                    )
-        except Exception as e:
-            st.warning(f"Image export failed for {name}: {e}")
