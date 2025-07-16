@@ -3,99 +3,85 @@ import numpy as np
 import pandas as pd
 import rasterio
 from rasterio.enums import Resampling
-from rasterio.warp import reproject, calculate_default_transform, aligned_target
-from rasterio.io import MemoryFile
-from rasterio.transform import Affine
+from rasterio.warp import calculate_default_transform, reproject
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 
-def reproject_and_align_raster(src_raster_path, target_profile):
-    with rasterio.open(src_raster_path) as src:
+def align_crop_to_depth(crop_path, depth_path):
+    with rasterio.open(depth_path) as depth_src:
+        dst_crs = depth_src.crs
         dst_transform, width, height = calculate_default_transform(
-            src.crs, target_profile["crs"], target_profile["width"], target_profile["height"], *src.bounds)
-        dst_shape = (height, width)
-        dst_array = np.zeros(dst_shape, dtype=src.meta['dtype'])
+            rasterio.open(crop_path).crs,
+            dst_crs,
+            rasterio.open(crop_path).width,
+            rasterio.open(crop_path).height,
+            *rasterio.open(crop_path).bounds
+        )
+        profile = rasterio.open(crop_path).profile.copy()
+        profile.update({
+            'crs': dst_crs,
+            'transform': dst_transform,
+            'width': width,
+            'height': height
+        })
 
+        reprojected = np.zeros((height, width), dtype=np.uint16)
         reproject(
-            source=rasterio.band(src, 1),
-            destination=dst_array,
-            src_transform=src.transform,
-            src_crs=src.crs,
+            source=rasterio.open(crop_path).read(1),
+            destination=reprojected,
+            src_transform=rasterio.open(crop_path).transform,
+            src_crs=rasterio.open(crop_path).crs,
             dst_transform=dst_transform,
-            dst_crs=target_profile["crs"],
+            dst_crs=dst_crs,
             resampling=Resampling.nearest
         )
-    return dst_array
 
-def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, period_years, crop_inputs, flood_metadata):
+        return reprojected, profile
+
+def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_inputs, flood_metadata):
     os.makedirs(output_dir, exist_ok=True)
-    summaries = {}
-    diagnostics = []
-    damage_rasters = {}
+    summaries, diagnostics, damage_rasters = {}, [], {}
 
-    for depth_path in depth_raster_paths:
+    for depth_path in depth_paths:
         label = os.path.splitext(os.path.basename(depth_path))[0]
-        metadata = flood_metadata.get(os.path.basename(depth_path), {"return_period": 100, "flood_month": 6})
-        return_period = metadata["return_period"]
-        flood_month = metadata["flood_month"]
+        meta = flood_metadata.get(os.path.basename(depth_path), {})
+        return_period = meta.get("return_period", 100)
+        flood_month = meta.get("flood_month", 6)
 
-        # Open depth raster (target for alignment)
+        aligned_crop, crop_profile = align_crop_to_depth(crop_path, depth_path)
+
         with rasterio.open(depth_path) as depth_src:
-            depth_profile = depth_src.profile.copy()
-            depth_array = depth_src.read(1)
-            depth_transform = depth_src.transform
-            depth_crs = depth_src.crs
+            depth_arr = depth_src.read(1, out_shape=(aligned_crop.shape), resampling=Resampling.bilinear)
 
-        # Reproject and align crop raster to depth raster
-        with rasterio.open(crop_raster_path) as crop_src:
-            crop_aligned = np.zeros(depth_array.shape, dtype=crop_src.meta["dtype"])
-            reproject(
-                source=rasterio.band(crop_src, 1),
-                destination=crop_aligned,
-                src_transform=crop_src.transform,
-                src_crs=crop_src.crs,
-                dst_transform=depth_transform,
-                dst_crs=depth_crs,
-                resampling=Resampling.nearest
-            )
-            crop_profile = crop_src.profile.copy()
-            crop_profile.update({
-                "height": depth_array.shape[0],
-                "width": depth_array.shape[1],
-                "transform": depth_transform,
-                "crs": depth_crs
-            })
-
-        damage_arr = np.zeros_like(depth_array, dtype=float)
-        summary_rows = []
+        damage_arr = np.zeros_like(aligned_crop, dtype=float)
+        rows = []
 
         for code, props in crop_inputs.items():
-            mask = (crop_aligned == code)
-            if not np.any(mask):
-                diagnostics.append({"Flood": label, "CropCode": code, "Issue": "Not present"})
-                continue
             if flood_month not in props["GrowingSeason"]:
                 diagnostics.append({"Flood": label, "CropCode": code, "Issue": "Out of season"})
                 continue
 
-            value = props["Value"]
-            flooded_mask = (depth_array > 0) & mask
-            damage_ratio = np.clip(depth_array / 6.0, 0, 1)
-            crop_damage = value * damage_ratio * mask
-            avg_damage = crop_damage[flooded_mask].sum()
-            ead = avg_damage * (1 / return_period)
+            mask = aligned_crop == code
+            if not np.any(mask):
+                diagnostics.append({"Flood": label, "CropCode": code, "Issue": "Not present"})
+                continue
 
+            value = props["Value"]
+            damage_ratio = np.clip(depth_arr / 6.0, 0, 1)
+            crop_damage = value * damage_ratio * mask
+            avg_damage = crop_damage.sum()
+            ead = avg_damage * (1 / return_period)
             damage_arr = np.where(mask, damage_ratio, damage_arr)
 
-            summary_rows.append({
+            rows.append({
                 "CropCode": code,
-                "FloodedAcres": int(flooded_mask.sum()),
+                "FloodedAcres": int(mask.sum()),
                 "ValuePerAcre": value,
                 "DollarsLost": round(avg_damage, 2),
                 "EAD": round(ead, 2),
             })
 
-        df = pd.DataFrame(summary_rows)
+        df = pd.DataFrame(rows)
         summaries[label] = df
         damage_rasters[label] = damage_arr
 
@@ -109,3 +95,25 @@ def process_flood_damage(crop_raster_path, depth_raster_paths, output_dir, perio
         pd.DataFrame(diagnostics).to_excel(writer, sheet_name="Diagnostics", index=False)
 
     return excel_path, summaries, diagnostics, damage_rasters
+
+def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft):
+    results = {}
+    for flood, df in summaries.items():
+        return_period = flood_metadata[flood]["return_period"]
+        rows = []
+        for _, row in df.iterrows():
+            sim = []
+            for _ in range(samples):
+                value = np.random.normal(row["ValuePerAcre"], row["ValuePerAcre"] * value_uncertainty_pct / 100)
+                depth_ratio = np.random.normal(1.0, depth_uncertainty_ft / 6.0)
+                sim_loss = value * depth_ratio * row["FloodedAcres"]
+                sim.append(sim_loss * (1 / return_period))
+            rows.append({
+                "CropCode": row["CropCode"],
+                "EAD_MC_Mean": round(np.mean(sim), 2),
+                "EAD_MC_5th": round(np.percentile(sim, 5), 2),
+                "EAD_MC_95th": round(np.percentile(sim, 95), 2),
+                "Original_EAD": row["EAD"]
+            })
+        results[flood] = pd.DataFrame(rows)
+    return results
