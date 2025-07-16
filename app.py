@@ -113,11 +113,19 @@ if st.session_state.result_path and st.session_state.summaries:
 
     # ➕ Optional Monte Carlo
     st.markdown("## 🎲 Monte Carlo Simulation (Optional)")
-    if st.button("▶️ Run Monte Carlo Based on Current Results"):
-        st.session_state.monte_carlo_results = run_monte_carlo(st.session_state.summaries, samples)
+if "CropCode" in df.columns and "EAD" in df.columns:
+    try:
+        plot_df = df[["CropCode", "EAD"]].dropna()
+        plot_df["EAD"] = pd.to_numeric(plot_df["EAD"], errors="coerce")
+        plot_df = plot_df.dropna()
+        fig, ax = plt.subplots()
+        plot_df.plot(kind="bar", x="CropCode", y="EAD", ax=ax, legend=False)
+        ax.set_ylabel("Expected Annual Damage ($)")
+        ax.set_title(f"EAD per Crop for {flood}")
+        st.pyplot(fig)
+    except Exception as e:
+        st.warning(f"⚠️ Could not generate chart for {flood}: {e}")
 
-    if st.session_state.monte_carlo_results:
-        st.markdown("### 📈 Monte Carlo Summary")
         for flood, df in st.session_state.monte_carlo_results.items():
             st.subheader(f"📊 {flood} – Monte Carlo Results")
             st.dataframe(df)
