@@ -101,22 +101,6 @@ if st.session_state.result_path and "damage_rasters" in st.session_state:
         st.subheader("🛠️ Diagnostics")
         st.dataframe(pd.DataFrame(st.session_state.diagnostics))
 
-    # Show damage raster images
-    st.subheader("🖼️ Damage Maps")
-    for name, raster_path in st.session_state.damage_rasters.items():
-        try:
-            with rasterio.open(raster_path) as src:
-                damage_arr = src.read(1)
-                masked = np.ma.masked_where(damage_arr == 0, damage_arr)
-                fig, ax = plt.subplots(figsize=(6, 4))
-                cmap = plt.cm.get_cmap("Reds")
-                im = ax.imshow(masked, cmap=cmap)
-                ax.set_title(f"Crop Damage Raster – {name}")
-                plt.colorbar(im, ax=ax, label="% Damage")
-                st.pyplot(fig)
-        except Exception as e:
-            st.warning(f"Could not render {name}: {e}")
-
     # Export final Excel
     with open(st.session_state.result_path, "rb") as file:
         st.download_button(
