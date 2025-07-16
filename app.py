@@ -22,7 +22,7 @@ if st.button("🔁 Reset App"):
     st.rerun()
 
 # 📁 Uploads
-crop_file = st.file_uploader("🌾 Upload USDA Cropland Raster (GeoTIFF)", type=["tif", "img"])
+crop_file = st.file_uploader("🌾 Upload USDA CropScape Raster (GeoTIFF)", type=["tif", "img"])
 depth_files = st.file_uploader("🌊 Upload One or More Flood Depth Grids (GeoTIFF)", type="tif", accept_multiple_files=True)
 period_years = st.number_input("📆 Analysis Period (Years)", value=50, min_value=1)
 samples = st.number_input("🎲 Monte Carlo Samples", value=100, min_value=10)
