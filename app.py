@@ -131,9 +131,12 @@ if st.session_state.monte_carlo_summary:
         st.subheader(f"📉 {flood} Monte Carlo Summary")
         st.dataframe(df_mc)
 
-        if "CropCode" in df_mc.columns and "EAD_Mean" in df_mc.columns:
-            fig, ax = plt.subplots()
-            df_mc.plot(kind="bar", x="CropCode", y="EAD_Mean", ax=ax, legend=False)
-            ax.set_ylabel("EAD ($) with Uncertainty")
-            ax.set_title(f"Monte Carlo EAD (Mean) for {flood}")
-            st.pyplot(fig)
+if isinstance(df_mc, pd.DataFrame) and not df_mc.empty and "CropCode" in df_mc.columns and "EAD_Mean" in df_mc.columns:
+    fig, ax = plt.subplots()
+    df_mc.plot(kind="bar", x="CropCode", y="EAD_Mean", ax=ax, legend=False)
+    ax.set_ylabel("EAD ($) with Uncertainty")
+    ax.set_title(f"Monte Carlo EAD (Mean) for {flood}")
+    st.pyplot(fig)
+else:
+    st.info(f"⚠️ Monte Carlo results for {flood} are missing expected columns or are empty.")
+
