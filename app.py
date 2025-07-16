@@ -18,18 +18,18 @@ from matplotlib.colors import Normalize
 st.set_page_config(layout="wide")
 st.title("🌾 Agricultural Flood Damage Estimator")
 
-# Session state init
+# Initialize session state keys
 for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
-# Reset button
+# 🔁 Reset app state
 if st.button("🔁 Reset App"):
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
 
-# File uploads and settings
+# 📁 File uploads and settings
 crop_file = st.file_uploader("🌾 Upload USDA Cropland Raster (GeoTIFF)", type=["tif", "img"])
 depth_files = st.file_uploader("🌊 Upload One or More Flood Depth Grids (GeoTIFF)", type="tif", accept_multiple_files=True)
 period_years = st.number_input("🗖️ Analysis Period (Years)", value=50, min_value=1)
@@ -38,7 +38,7 @@ samples = st.number_input("🎲 Monte Carlo Samples", value=100, min_value=10)
 crop_inputs = {}
 flood_metadata = {}
 
-# Crop setup
+# 🌱 Crop setup
 if crop_file:
     crop_path = tempfile.NamedTemporaryFile(delete=False, suffix=".tif").name
     with open(crop_path, "wb") as f:
@@ -53,12 +53,13 @@ if crop_file:
     st.markdown("### 🌱 Define Crop Values and Seasons")
     for code in most_common:
         val = st.number_input(f"Crop {code} — Value per Acre ($)", value=5500, step=100, key=f"val_{code}")
-        months = st.multiselect(f"Crop {code} — Growing Season (months 1–12)", options=list(range(1, 13)), default=list(range(4, 10)), key=f"grow_{code}")
+        months = st.multiselect(f"Crop {code} — Growing Season (months 1–12)",
+                                options=list(range(1, 13)), default=list(range(4, 10)), key=f"grow_{code}")
         if not months:
             st.warning(f"⚠️ No growing season months selected for crop {code}.")
         crop_inputs[code] = {"Value": val, "GrowingSeason": months}
 
-# Flood metadata
+# ⚙️ Flood metadata
 if depth_files:
     st.markdown("### ⚙️ Flood Raster Settings")
     depth_paths = []
@@ -72,7 +73,7 @@ if depth_files:
         flood_metadata[f.name] = {"return_period": rp, "flood_month": mo}
     st.session_state["depth_paths"] = depth_paths
 
-# Run processing
+# 🚀 Run tool
 if st.button("🚀 Run Flood Damage Estimator"):
     if not crop_file or not depth_files:
         st.error("Please upload both cropland and depth raster files.")
@@ -93,15 +94,15 @@ if st.button("🚀 Run Flood Damage Estimator"):
                     crop_inputs,
                     flood_metadata
                 )
+                # ✅ Save results to session_state without rerunning
                 st.session_state.result_path = result_path
                 st.session_state.summaries = summaries
                 st.session_state.diagnostics = diagnostics
-                st.success("✅ Damage estimates complete!")
-                st.rerun()
+                st.success("✅ Damage estimates complete! Scroll down to view results.")
             except Exception as e:
                 st.error(f"❌ Error during processing: {e}")
 
-# Show results if available
+# 📊 Results
 if st.session_state.result_path and st.session_state.summaries:
     st.download_button("📅 Download Excel Summary", data=open(st.session_state.result_path, "rb"), file_name="ag_damage_summary.xlsx")
 
@@ -113,7 +114,6 @@ if st.session_state.result_path and st.session_state.summaries:
 
     for flood, df in st.session_state.summaries.items():
         st.subheader(f"📊 {flood} Summary")
-
         if not df.empty:
             df["EAD"] = (df["DollarsLost"] / period_years).round(2)
 
