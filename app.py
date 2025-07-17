@@ -128,6 +128,21 @@ if st.session_state.result_path and "damage_rasters" in st.session_state:
 
 # Monte Carlo (optional)
 if st.session_state.summaries and st.button("🧪 Run Monte Carlo Simulation"):
+    # Pre-check: ensure metadata is loaded and matches summary keys
+    if not st.session_state.label_metadata:
+        st.error("❌ Flood metadata is missing. Please run the estimator first.")
+        st.stop()
+
+    summary_labels = list(st.session_state.summaries.keys())
+    metadata_labels = list(st.session_state.label_metadata.keys())
+    missing_labels = [lbl for lbl in summary_labels if lbl not in metadata_labels and lbl != "Integrated_EAD"]
+
+    if missing_labels:
+        st.error(f"⚠️ Metadata is missing for the following flood scenarios: {missing_labels}")
+        st.write("📄 Available summary keys:", summary_labels)
+        st.write("📄 Available metadata keys:", metadata_labels)
+        st.stop()
+
     with st.spinner("🔬 Running Monte Carlo..."):
         try:
             mc_results = run_monte_carlo(
