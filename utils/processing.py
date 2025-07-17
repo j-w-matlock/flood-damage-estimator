@@ -10,8 +10,8 @@ from openpyxl.chart import BarChart, Reference
 
 def align_crop_to_depth(crop_path, depth_path):
     """
-    Aligns cropland raster to match the flood depth raster's CRS and resolution.
-    Returns the reprojected crop array and updated raster profile.
+    Align cropland raster to match flood depth raster's CRS and resolution.
+    Returns the reprojected crop array and updated profile.
     """
     with rasterio.open(depth_path) as depth_src:
         dst_crs = depth_src.crs
@@ -48,7 +48,7 @@ def align_crop_to_depth(crop_path, depth_path):
 
 def compute_trapezoidal_ead(probabilities, damages):
     """
-    Computes USACE-compliant trapezoidal EAD integration over a damage-probability curve.
+    Computes trapezoidal EAD over a damage-probability curve.
     """
     sorted_pairs = sorted(zip(probabilities, damages))
     probs, dmg = zip(*sorted_pairs)
@@ -62,9 +62,9 @@ def compute_trapezoidal_ead(probabilities, damages):
 
 def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_inputs, flood_metadata):
     """
-    Processes flood damage per raster, estimating crop-specific losses and event-based EAD.
-    Optionally integrates multiple events to compute full trapezoidal EAD across return periods.
-    Returns summary tables, diagnostics, raster outputs, and an Excel report path.
+    Estimates flood damage and event-based EAD for each flood scenario.
+    Computes optional full integrated EAD if multiple events are available.
+    Returns summaries, diagnostics, damage rasters, and Excel export path.
     """
     os.makedirs(output_dir, exist_ok=True)
     summaries, diagnostics, damage_rasters = {}, [], {}
@@ -98,7 +98,6 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
             crop_damage = value * damage_ratio * mask
             avg_damage = crop_damage.sum()
             ead_event = avg_damage * (1 / return_period)
-
             damage_arr = np.where(mask, damage_ratio, damage_arr)
 
             rows.append({
@@ -114,15 +113,12 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
         damage_rasters[label] = damage_arr
 
         out_profile = crop_profile.copy()
-        out_profile.update({
-            'dtype': 'float32',
-            'compress': 'lzw'
-        })
+        out_profile.update({'dtype': 'float32', 'compress': 'lzw'})
 
         with rasterio.open(os.path.join(output_dir, f"damage_{label}.tif"), "w", **out_profile) as dst:
             dst.write(damage_arr, 1)
 
-    # Optional USACE-compliant EAD Integration if multiple floods exist
+    # Optional USACE-style EAD integration
     if len(depth_paths) > 1:
         crop_ead_table = {}
 
@@ -130,22 +126,17 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
             prob = 1 / flood_metadata[label + ".tif"]["return_period"]
             for _, row in df.iterrows():
                 code = row["CropCode"]
-                if code not in crop_ead_table:
-                    crop_ead_table[code] = []
-                crop_ead_table[code].append((prob, row["DollarsLost"]))
+                crop_ead_table.setdefault(code, []).append((prob, row["DollarsLost"]))
 
         full_ead_rows = []
         for code, pairs in crop_ead_table.items():
             probs, damages = zip(*pairs)
             integrated_ead = compute_trapezoidal_ead(probs, damages)
-            full_ead_rows.append({
-                "CropCode": code,
-                "Integrated_EAD": integrated_ead
-            })
+            full_ead_rows.append({"CropCode": code, "Integrated_EAD": integrated_ead})
 
         summaries["Integrated_EAD"] = pd.DataFrame(full_ead_rows)
 
-    # Export Excel report including MC placeholder (if later added)
+    # Export Excel
     excel_path = os.path.join(output_dir, "ag_damage_summary.xlsx")
     with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
         for label, df in summaries.items():
@@ -156,25 +147,21 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
     return excel_path, summaries, diagnostics, damage_rasters
 
 
-def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft):
+def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft, label_to_filename):
     """
-    Runs Monte Carlo simulation to estimate uncertainty around EAD values.
-    Uses flexible flood key resolution to prevent filename mismatches.
+    Runs Monte Carlo simulation for each flood/crop and returns uncertainty estimates.
     """
     results = {}
 
-    for flood, df in summaries.items():
-        if flood == "Integrated_EAD":
-            continue  # skip full integration sheet
+    for label, df in summaries.items():
+        if label == "Integrated_EAD":
+            continue  # skip integrated sheet
 
-        # Try to resolve flood metadata key
-        possible_keys = [flood, flood + ".tif"]
-        key = next((k for k in possible_keys if k in flood_metadata), None)
+        filename = label_to_filename.get(label)
+        if not filename or filename not in flood_metadata:
+            raise ValueError(f"Flood metadata missing for: {label} (filename: {filename})")
 
-        if not key:
-            raise ValueError(f"Flood metadata missing for: {flood} (available keys: {list(flood_metadata.keys())})")
-
-        return_period = flood_metadata[key]["return_period"]
+        return_period = flood_metadata[filename]["return_period"]
         rows = []
 
         for _, row in df.iterrows():
@@ -192,6 +179,6 @@ def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, d
                 "Original_EAD": row["EAD_Event"]
             })
 
-        results[flood] = pd.DataFrame(rows)
+        results[label] = pd.DataFrame(rows)
 
     return results

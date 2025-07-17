@@ -12,7 +12,7 @@ st.set_page_config(layout="wide")
 st.title("🌾 Agricultural Flood Damage Estimator")
 
 # Session state init
-for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths", "damage_rasters"]:
+for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths", "damage_rasters", "label_map"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
@@ -32,6 +32,7 @@ depth_sd = st.sidebar.number_input("± Depth Uncertainty (ft)", value=0.1)
 value_sd = st.sidebar.number_input("± Crop Value Uncertainty (%)", value=10)
 
 crop_inputs, flood_metadata = {}, {}
+label_to_filename = {}
 
 # Process cropland raster
 if crop_file:
@@ -63,7 +64,10 @@ if depth_files:
         rp = st.number_input(f"Return Period: {f.name}", min_value=1, value=100, key=f"rp_{i}")
         mo = st.number_input(f"Flood Month: {f.name}", min_value=1, max_value=12, value=6, key=f"mo_{i}")
         flood_metadata[f.name] = {"return_period": rp, "flood_month": mo}
+        label = os.path.splitext(os.path.basename(path))[0]
+        label_to_filename[label] = f.name
     st.session_state.depth_paths = depth_paths
+    st.session_state.label_map = label_to_filename
 
 # Run direct damage estimate
 if st.button("🚀 Run Flood Damage Estimator"):
@@ -130,7 +134,8 @@ if st.session_state.summaries and st.button("🧪 Run Monte Carlo Simulation"):
                 flood_metadata,
                 samples,
                 value_sd,
-                depth_sd
+                depth_sd,
+                st.session_state.label_map
             )
 
             st.markdown("---")
