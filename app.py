@@ -24,6 +24,7 @@ if st.sidebar.button("🔁 Reset App"):
 
 # Sidebar Inputs
 st.sidebar.header("🛠️ Settings")
+mode = st.sidebar.radio("Select Analysis Mode:", ["Direct Damages", "Monte Carlo Simulation"])
 crop_file = st.sidebar.file_uploader("🌾 USDA Cropland Raster", type=["tif", "img"])
 depth_files = st.sidebar.file_uploader("🌊 Flood Depth Grids", type=["tif"], accept_multiple_files=True)
 period_years = st.sidebar.number_input("📆 Analysis Period (Years)", min_value=1, value=50)
@@ -70,102 +71,101 @@ if depth_files:
     st.session_state.label_map = label_to_filename
     st.session_state.label_metadata = label_to_metadata
 
-# Run direct damage estimate
-if st.button("🚀 Run Flood Damage Estimator"):
-    if not (crop_file and depth_files):
-        st.error("❌ Please upload both cropland and flood rasters.")
-    else:
-        with st.spinner("🔄 Processing flood damages..."):
-            try:
-                result_path, summaries, diagnostics, damage_rasters = process_flood_damage(
-                    st.session_state.crop_path,
-                    st.session_state.depth_paths,
-                    tempfile.mkdtemp(),
-                    period_years,
-                    crop_inputs,
-                    st.session_state.label_metadata
-                )
-                st.session_state.result_path = result_path
-                st.session_state.summaries = summaries
-                st.session_state.diagnostics = diagnostics
-                st.session_state.damage_rasters = damage_rasters
-                st.success("✅ Direct damage analysis complete.")
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
+if mode == "Direct Damages":
+    if st.button("🚀 Run Flood Damage Estimator"):
+        if not (crop_file and depth_files):
+            st.error("❌ Please upload both cropland and flood rasters.")
+        else:
+            with st.spinner("🔄 Processing flood damages..."):
+                try:
+                    result_path, summaries, diagnostics, damage_rasters = process_flood_damage(
+                        st.session_state.crop_path,
+                        st.session_state.depth_paths,
+                        tempfile.mkdtemp(),
+                        period_years,
+                        crop_inputs,
+                        st.session_state.label_metadata
+                    )
+                    st.session_state.result_path = result_path
+                    st.session_state.summaries = summaries
+                    st.session_state.diagnostics = diagnostics
+                    st.session_state.damage_rasters = damage_rasters
+                    st.success("✅ Direct damage analysis complete.")
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
 
-# Results section
-if st.session_state.result_path and "damage_rasters" in st.session_state:
-    st.markdown("---")
-    st.header("📈 Results & Visualizations")
+    if st.session_state.result_path and "damage_rasters" in st.session_state:
+        st.markdown("---")
+        st.header("📈 Results & Visualizations")
 
-    # Summary tables
-    for label, df in st.session_state.summaries.items():
-        st.subheader(f"📋 Summary for {label}")
-        st.dataframe(df)
+        for label, df in st.session_state.summaries.items():
+            st.subheader(f"📋 Summary for {label}")
+            st.dataframe(df)
 
-    # Diagnostics
-    if st.session_state.diagnostics:
-        st.subheader("🛠️ Diagnostics")
-        st.dataframe(pd.DataFrame(st.session_state.diagnostics))
+        if st.session_state.diagnostics:
+            st.subheader("🛠️ Diagnostics")
+            st.dataframe(pd.DataFrame(st.session_state.diagnostics))
 
-    # Damage raster visualizations
-    for label, arr in st.session_state.damage_rasters.items():
-        st.subheader(f"🗺️ Damage Raster – {label}")
-        fig, ax = plt.subplots()
-        cax = ax.imshow(arr, cmap='YlOrRd')
-        fig.colorbar(cax, ax=ax, label="Damage Ratio")
-        ax.set_title(f"Damage Raster: {label}")
-        st.pyplot(fig)
+        for label, arr in st.session_state.damage_rasters.items():
+            st.subheader(f"🗺️ Damage Raster – {label}")
+            fig, ax = plt.subplots()
+            cax = ax.imshow(arr, cmap='YlOrRd')
+            fig.colorbar(cax, ax=ax, label="Damage Ratio")
+            ax.set_title(f"Damage Raster: {label}")
+            st.pyplot(fig)
 
-    # Download Excel
-    with open(st.session_state.result_path, "rb") as file:
-        st.download_button(
-            label="📥 Download Results Excel File",
-            data=file,
-            file_name=os.path.basename(st.session_state.result_path),
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-# Monte Carlo (optional)
-if st.session_state.summaries and st.button("🧪 Run Monte Carlo Simulation"):
-    # Pre-check: ensure metadata is loaded and matches summary keys
-    if not st.session_state.label_metadata:
-        st.error("❌ Flood metadata is missing. Please run the estimator first.")
-        st.stop()
-
-    summary_labels = list(st.session_state.summaries.keys())
-    metadata_labels = list(st.session_state.label_metadata.keys())
-    missing_labels = [lbl for lbl in summary_labels if lbl not in metadata_labels and lbl != "Integrated_EAD"]
-
-    if missing_labels:
-        st.error(f"⚠️ Metadata is missing for the following flood scenarios: {missing_labels}")
-        st.write("📄 Available summary keys:", summary_labels)
-        st.write("📄 Available metadata keys:", metadata_labels)
-        st.stop()
-
-    with st.spinner("🔬 Running Monte Carlo..."):
-        try:
-            mc_results = run_monte_carlo(
-                st.session_state.summaries,
-                st.session_state.label_metadata,
-                samples,
-                value_sd,
-                depth_sd
+        with open(st.session_state.result_path, "rb") as file:
+            st.download_button(
+                label="📥 Download Results Excel File",
+                data=file,
+                file_name=os.path.basename(st.session_state.result_path),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            st.markdown("---")
-            st.header("📉 Monte Carlo EAD Results")
+elif mode == "Monte Carlo Simulation":
+    if st.button("🧪 Run Monte Carlo Simulation"):
+        if not (crop_file and depth_files):
+            st.error("❌ Please upload both cropland and flood rasters.")
+        else:
+            with st.spinner("🔬 Running Monte Carlo..."):
+                try:
+                    result_path, summaries, diagnostics, damage_rasters = process_flood_damage(
+                        st.session_state.crop_path,
+                        st.session_state.depth_paths,
+                        tempfile.mkdtemp(),
+                        period_years,
+                        crop_inputs,
+                        st.session_state.label_metadata
+                    )
+                    mc_results = run_monte_carlo(
+                        summaries,
+                        st.session_state.label_metadata,
+                        samples,
+                        value_sd,
+                        depth_sd
+                    )
+                    st.session_state.result_path = result_path
 
-            for label, df in mc_results.items():
-                st.subheader(f"🧪 MC Summary for {label}")
-                st.dataframe(df)
+                    st.markdown("---")
+                    st.header("📉 Monte Carlo EAD Results")
 
-            # Export to Excel (append to existing file)
-            with pd.ExcelWriter(st.session_state.result_path, mode="a", engine="openpyxl") as writer:
-                for label, df in mc_results.items():
-                    df.to_excel(writer, sheet_name=f"MC_{label}", index=False)
+                    for label, df in mc_results.items():
+                        st.subheader(f"🧪 MC Summary for {label}")
+                        st.dataframe(df)
 
-            st.success("✅ Monte Carlo results added to Excel.")
+                    with pd.ExcelWriter(result_path, mode="a", engine="openpyxl") as writer:
+                        for label, df in mc_results.items():
+                            df.to_excel(writer, sheet_name=f"MC_{label}", index=False)
 
-        except Exception as e:
-            st.error(f"⚠️ Monte Carlo error: {e}")
+                    with open(result_path, "rb") as file:
+                        st.download_button(
+                            label="📥 Download Monte Carlo Excel File",
+                            data=file,
+                            file_name=os.path.basename(result_path),
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+
+                    st.success("✅ Monte Carlo analysis complete.")
+
+                except Exception as e:
+                    st.error(f"⚠️ Monte Carlo error: {e}")
