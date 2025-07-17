@@ -12,23 +12,24 @@ st.set_page_config(layout="wide")
 st.title("🌾 Agricultural Flood Damage Estimator")
 
 # Session state init
-for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths"]:
+for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths", "damage_rasters"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
 # Reset
-if st.button("🔁 Reset App"):
+if st.sidebar.button("🔁 Reset App"):
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
 
-# File upload
-crop_file = st.file_uploader("🌾 USDA Cropland Raster", type=["tif", "img"])
-depth_files = st.file_uploader("🌊 Flood Depth Grids", type=["tif"], accept_multiple_files=True)
-period_years = st.number_input("📆 Analysis Period (Years)", min_value=1, value=50)
-samples = st.number_input("🎲 Iterations", min_value=10, value=100)
-depth_sd = st.number_input("± Depth Uncertainty (ft)", value=0.1)
-value_sd = st.number_input("± Crop Value Uncertainty (%)", value=10)
+# Sidebar Inputs
+st.sidebar.header("🛠️ Settings")
+crop_file = st.sidebar.file_uploader("🌾 USDA Cropland Raster", type=["tif", "img"])
+depth_files = st.sidebar.file_uploader("🌊 Flood Depth Grids", type=["tif"], accept_multiple_files=True)
+period_years = st.sidebar.number_input("📆 Analysis Period (Years)", min_value=1, value=50)
+samples = st.sidebar.number_input("🎲 Monte Carlo Iterations", min_value=10, value=100)
+depth_sd = st.sidebar.number_input("± Depth Uncertainty (ft)", value=0.1)
+value_sd = st.sidebar.number_input("± Crop Value Uncertainty (%)", value=10)
 
 crop_inputs, flood_metadata = {}, {}
 
@@ -44,7 +45,7 @@ if crop_file:
     counts = Counter(arr.flatten())
     codes = [c for c, _ in counts.most_common(10) if c != 0]
 
-    st.markdown("### 🌱 Crop Values and Seasons")
+    st.markdown("### 🌱 Crop Values and Growing Seasons")
     for code in codes:
         val = st.number_input(f"Crop {code} – $/Acre", value=5500, step=100, key=f"val_{code}")
         season = st.multiselect(f"Crop {code} – Growing Months", list(range(1, 13)), default=list(range(4, 10)), key=f"season_{code}")
@@ -67,9 +68,9 @@ if depth_files:
 # Run direct damage estimate
 if st.button("🚀 Run Flood Damage Estimator"):
     if not (crop_file and depth_files):
-        st.error("Both cropland and flood rasters are required.")
+        st.error("❌ Please upload both cropland and flood rasters.")
     else:
-        with st.spinner("Processing flood damages..."):
+        with st.spinner("🔄 Processing flood damages..."):
             try:
                 result_path, summaries, diagnostics, damage_rasters = process_flood_damage(
                     st.session_state.crop_path,
@@ -86,22 +87,32 @@ if st.button("🚀 Run Flood Damage Estimator"):
                 st.success("✅ Direct damage analysis complete.")
             except Exception as e:
                 st.error(f"❌ Error: {e}")
-                # 📊 Visualize Results After Run
+
+# Results section
 if st.session_state.result_path and "damage_rasters" in st.session_state:
     st.markdown("---")
     st.header("📈 Results & Visualizations")
 
-    # Show summary tables
+    # Summary tables
     for label, df in st.session_state.summaries.items():
         st.subheader(f"📋 Summary for {label}")
         st.dataframe(df)
 
-    # Show diagnostics if any
+    # Diagnostics
     if st.session_state.diagnostics:
         st.subheader("🛠️ Diagnostics")
         st.dataframe(pd.DataFrame(st.session_state.diagnostics))
 
-    # Export final Excel
+    # Damage raster visualizations
+    for label, arr in st.session_state.damage_rasters.items():
+        st.subheader(f"🗺️ Damage Raster – {label}")
+        fig, ax = plt.subplots()
+        cax = ax.imshow(arr, cmap='YlOrRd')
+        fig.colorbar(cax, ax=ax, label="Damage Ratio")
+        ax.set_title(f"Damage Raster: {label}")
+        st.pyplot(fig)
+
+    # Download Excel
     with open(st.session_state.result_path, "rb") as file:
         st.download_button(
             label="📥 Download Results Excel File",
@@ -109,3 +120,20 @@ if st.session_state.result_path and "damage_rasters" in st.session_state:
             file_name=os.path.basename(st.session_state.result_path),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+# Monte Carlo (optional)
+if st.session_state.summaries and st.button("🧪 Run Monte Carlo Simulation"):
+    with st.spinner("🔬 Running Monte Carlo..."):
+        try:
+            mc_results = run_monte_carlo(
+                st.session_state.summaries,
+                flood_metadata,
+                samples,
+                value_sd,
+                depth_sd
+            )
+            for label, df in mc_results.items():
+                st.subheader(f"📉 Monte Carlo Results – {label}")
+                st.dataframe(df)
+        except Exception as e:
+            st.error(f"⚠️ Monte Carlo error: {e}")
