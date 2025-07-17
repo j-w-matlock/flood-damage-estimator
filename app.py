@@ -71,6 +71,7 @@ if depth_files:
     st.session_state.label_map = label_to_filename
     st.session_state.label_metadata = label_to_metadata
 
+# Direct Damages Mode
 if mode == "Direct Damages":
     if st.button("🚀 Run Flood Damage Estimator"):
         if not (crop_file and depth_files):
@@ -100,6 +101,14 @@ if mode == "Direct Damages":
 
         for label, df in st.session_state.summaries.items():
             st.subheader(f"📋 Summary for {label}")
+            with st.expander("ℹ️ Column Definitions"):
+                st.markdown("""
+                - **CropCode**: CropScape code for crop type.
+                - **FloodedAcres**: Area affected (1 pixel ≈ 0.222 acres).
+                - **ValuePerAcre**: Input value per acre for the crop.
+                - **DollarsLost**: Total crop damage.
+                - **EAD**: Expected Annual Damage = DollarsLost ÷ ReturnPeriod.
+                """)
             st.dataframe(df)
 
         if st.session_state.diagnostics:
@@ -122,6 +131,7 @@ if mode == "Direct Damages":
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
+# Monte Carlo Mode
 elif mode == "Monte Carlo Simulation":
     if st.button("🧪 Run Monte Carlo Simulation"):
         if not (crop_file and depth_files):
@@ -151,6 +161,13 @@ elif mode == "Monte Carlo Simulation":
 
                     for label, df in mc_results.items():
                         st.subheader(f"🧪 MC Summary for {label}")
+                        with st.expander("ℹ️ Column Definitions"):
+                            st.markdown("""
+                            - **CropCode**: CropScape code for crop type.
+                            - **EAD_MC_Mean**: Mean simulated EAD from Monte Carlo.
+                            - **EAD_MC_5th / 95th**: Uncertainty bounds (percentiles).
+                            - **Original_EAD**: Deterministic EAD value for comparison.
+                            """)
                         st.dataframe(df)
 
                     with pd.ExcelWriter(result_path, mode="a", engine="openpyxl") as writer:
