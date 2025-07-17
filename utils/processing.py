@@ -159,7 +159,7 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
 def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft):
     """
     Runs Monte Carlo simulation to estimate uncertainty around EAD values.
-    Exports MC results to a separate summary that can be saved to Excel.
+    Uses flexible flood key resolution to prevent filename mismatches.
     """
     results = {}
 
@@ -167,11 +167,12 @@ def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, d
         if flood == "Integrated_EAD":
             continue  # skip full integration sheet
 
-        # Try to resolve flood metadata key with or without .tif extension
+        # Try to resolve flood metadata key
         possible_keys = [flood, flood + ".tif"]
         key = next((k for k in possible_keys if k in flood_metadata), None)
+
         if not key:
-            raise ValueError(f"Flood metadata missing for: {flood}")
+            raise ValueError(f"Flood metadata missing for: {flood} (available keys: {list(flood_metadata.keys())})")
 
         return_period = flood_metadata[key]["return_period"]
         rows = []
