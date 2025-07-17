@@ -54,8 +54,8 @@ def compute_trapezoidal_ead(probabilities, damages):
     probs, dmg = zip(*sorted_pairs)
     ead = 0.0
     for i in range(len(probs) - 1):
-        dp = probs[i+1] - probs[i]
-        avg_dmg = (dmg[i] + dmg[i+1]) / 2
+        dp = probs[i + 1] - probs[i]
+        avg_dmg = (dmg[i] + dmg[i + 1]) / 2
         ead += avg_dmg * dp
     return round(ead, 2)
 
@@ -75,7 +75,6 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
         return_period = meta.get("return_period", 100)
         flood_month = meta.get("flood_month", 6)
 
-        # Align crop to depth raster
         aligned_crop, crop_profile = align_crop_to_depth(crop_path, depth_path)
 
         with rasterio.open(depth_path) as depth_src:
@@ -95,10 +94,10 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
                 continue
 
             value = props["Value"]
-            damage_ratio = np.clip(depth_arr / 6.0, 0, 1)  # linear curve placeholder
+            damage_ratio = np.clip(depth_arr / 6.0, 0, 1)
             crop_damage = value * damage_ratio * mask
             avg_damage = crop_damage.sum()
-            ead_event = avg_damage * (1 / return_period)  # Event-based EAD
+            ead_event = avg_damage * (1 / return_period)
 
             damage_arr = np.where(mask, damage_ratio, damage_arr)
 
@@ -146,7 +145,7 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
 
         summaries["Integrated_EAD"] = pd.DataFrame(full_ead_rows)
 
-    # Export Excel report
+    # Export Excel report including MC placeholder (if later added)
     excel_path = os.path.join(output_dir, "ag_damage_summary.xlsx")
     with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
         for label, df in summaries.items():
@@ -159,16 +158,24 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
 
 def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft):
     """
-    Runs Monte Carlo simulation for uncertainty bounds around EAD values.
-    Adds EAD_MC_Mean, 5th and 95th percentiles for each crop and flood event.
+    Runs Monte Carlo simulation to estimate uncertainty around EAD values.
+    Exports MC results to a separate summary that can be saved to Excel.
     """
     results = {}
+
     for flood, df in summaries.items():
         if flood == "Integrated_EAD":
-            continue
+            continue  # skip full integration sheet
 
-        return_period = flood_metadata[flood + ".tif"]["return_period"]
+        # Try to resolve flood metadata key with or without .tif extension
+        possible_keys = [flood, flood + ".tif"]
+        key = next((k for k in possible_keys if k in flood_metadata), None)
+        if not key:
+            raise ValueError(f"Flood metadata missing for: {flood}")
+
+        return_period = flood_metadata[key]["return_period"]
         rows = []
+
         for _, row in df.iterrows():
             sim = []
             for _ in range(samples):
@@ -183,5 +190,7 @@ def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, d
                 "EAD_MC_95th": round(np.percentile(sim, 95), 2),
                 "Original_EAD": row["EAD_Event"]
             })
+
         results[flood] = pd.DataFrame(rows)
+
     return results

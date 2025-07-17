@@ -132,8 +132,20 @@ if st.session_state.summaries and st.button("🧪 Run Monte Carlo Simulation"):
                 value_sd,
                 depth_sd
             )
+
+            st.markdown("---")
+            st.header("📉 Monte Carlo EAD Results")
+
             for label, df in mc_results.items():
-                st.subheader(f"📉 Monte Carlo Results – {label}")
+                st.subheader(f"🧪 MC Summary for {label}")
                 st.dataframe(df)
+
+            # Export to Excel (append to existing file)
+            with pd.ExcelWriter(st.session_state.result_path, mode="a", engine="openpyxl") as writer:
+                for label, df in mc_results.items():
+                    df.to_excel(writer, sheet_name=f"MC_{label}", index=False)
+
+            st.success("✅ Monte Carlo results added to Excel.")
+
         except Exception as e:
             st.error(f"⚠️ Monte Carlo error: {e}")
