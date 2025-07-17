@@ -60,7 +60,7 @@ def compute_trapezoidal_ead(probabilities, damages):
     return round(ead, 2)
 
 
-def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_inputs, flood_metadata):
+def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_inputs, label_metadata):
     """
     Estimates flood damage and event-based EAD for each flood scenario.
     Computes optional full integrated EAD if multiple events are available.
@@ -71,7 +71,7 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
 
     for depth_path in depth_paths:
         label = os.path.splitext(os.path.basename(depth_path))[0]
-        meta = flood_metadata.get(os.path.basename(depth_path), {})
+        meta = label_metadata.get(label, {})
         return_period = meta.get("return_period", 100)
         flood_month = meta.get("flood_month", 6)
 
@@ -123,7 +123,7 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
         crop_ead_table = {}
 
         for label, df in summaries.items():
-            prob = 1 / flood_metadata[label + ".tif"]["return_period"]
+            prob = 1 / label_metadata[label]["return_period"]
             for _, row in df.iterrows():
                 code = row["CropCode"]
                 crop_ead_table.setdefault(code, []).append((prob, row["DollarsLost"]))
