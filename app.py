@@ -12,7 +12,7 @@ st.set_page_config(layout="wide")
 st.title("🌾 Agricultural Flood Damage Estimator")
 
 # Session state init
-for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths", "damage_rasters", "label_map"]:
+for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths", "damage_rasters", "label_map", "label_metadata"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
@@ -31,8 +31,7 @@ samples = st.sidebar.number_input("🎲 Monte Carlo Iterations", min_value=10, v
 depth_sd = st.sidebar.number_input("± Depth Uncertainty (ft)", value=0.1)
 value_sd = st.sidebar.number_input("± Crop Value Uncertainty (%)", value=10)
 
-crop_inputs, flood_metadata = {}, {}
-label_to_filename = {}
+crop_inputs, label_to_filename, label_to_metadata = {}, {}, {}
 
 # Process cropland raster
 if crop_file:
@@ -63,11 +62,13 @@ if depth_files:
         depth_paths.append(path)
         rp = st.number_input(f"Return Period: {f.name}", min_value=1, value=100, key=f"rp_{i}")
         mo = st.number_input(f"Flood Month: {f.name}", min_value=1, max_value=12, value=6, key=f"mo_{i}")
-        flood_metadata[f.name] = {"return_period": rp, "flood_month": mo}
         label = os.path.splitext(os.path.basename(path))[0]
         label_to_filename[label] = f.name
+        label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
+
     st.session_state.depth_paths = depth_paths
     st.session_state.label_map = label_to_filename
+    st.session_state.label_metadata = label_to_metadata
 
 # Run direct damage estimate
 if st.button("🚀 Run Flood Damage Estimator"):
@@ -82,7 +83,7 @@ if st.button("🚀 Run Flood Damage Estimator"):
                     tempfile.mkdtemp(),
                     period_years,
                     crop_inputs,
-                    flood_metadata
+                    st.session_state.label_metadata
                 )
                 st.session_state.result_path = result_path
                 st.session_state.summaries = summaries
@@ -131,11 +132,10 @@ if st.session_state.summaries and st.button("🧪 Run Monte Carlo Simulation"):
         try:
             mc_results = run_monte_carlo(
                 st.session_state.summaries,
-                flood_metadata,
+                st.session_state.label_metadata,
                 samples,
                 value_sd,
-                depth_sd,
-                st.session_state.label_map
+                depth_sd
             )
 
             st.markdown("---")

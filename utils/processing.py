@@ -147,21 +147,21 @@ def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_
     return excel_path, summaries, diagnostics, damage_rasters
 
 
-def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft, label_to_filename):
+def run_monte_carlo(summaries, label_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft):
     """
-    Runs Monte Carlo simulation for each flood/crop and returns uncertainty estimates.
+    Runs Monte Carlo simulation to estimate uncertainty around EAD values.
+    Uses label-based metadata passed from app.py for robust mapping.
     """
     results = {}
 
     for label, df in summaries.items():
         if label == "Integrated_EAD":
-            continue  # skip integrated sheet
+            continue  # skip full integration sheet
 
-        filename = label_to_filename.get(label)
-        if not filename or filename not in flood_metadata:
-            raise ValueError(f"Flood metadata missing for: {label} (filename: {filename})")
+        if label not in label_metadata:
+            raise ValueError(f"Missing metadata for label: {label}")
 
-        return_period = flood_metadata[filename]["return_period"]
+        return_period = label_metadata[label]["return_period"]
         rows = []
 
         for _, row in df.iterrows():
