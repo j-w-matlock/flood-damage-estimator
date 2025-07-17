@@ -24,13 +24,13 @@ if st.sidebar.button("🔁 Reset App"):
 
 # Sidebar Inputs
 st.sidebar.header("🛠️ Settings")
-mode = st.sidebar.radio("Select Analysis Mode:", ["Direct Damages", "Monte Carlo Simulation"])
-crop_file = st.sidebar.file_uploader("🌾 USDA Cropland Raster", type=["tif", "img"])
-depth_files = st.sidebar.file_uploader("🌊 Flood Depth Grids", type=["tif"], accept_multiple_files=True)
-period_years = st.sidebar.number_input("📆 Analysis Period (Years)", min_value=1, value=50)
-samples = st.sidebar.number_input("🎲 Monte Carlo Iterations", min_value=10, value=100)
-depth_sd = st.sidebar.number_input("± Depth Uncertainty (ft)", value=0.1)
-value_sd = st.sidebar.number_input("± Crop Value Uncertainty (%)", value=10)
+mode = st.sidebar.radio("Select Analysis Mode:", ["Direct Damages", "Monte Carlo Simulation"], help="Choose whether to run a straightforward flood loss calculation (Direct Damages) or include uncertainty using random simulations (Monte Carlo Simulation)")
+crop_file = st.sidebar.file_uploader("🌾 USDA Cropland Raster", type=["tif", "img"], help="Upload a CropScape raster that defines crop type per pixel")
+depth_files = st.sidebar.file_uploader("🌊 Flood Depth Grids", type=["tif"], accept_multiple_files=True, help="Upload one or more flood depth raster files (in feet)")
+period_years = st.sidebar.number_input("📆 Analysis Period (Years)", min_value=1, value=50, help="Used for context in planning studies; not required for EAD computation")
+samples = st.sidebar.number_input("🎲 Monte Carlo Iterations", min_value=10, value=100, help="Number of random simulations per crop type to estimate uncertainty")
+depth_sd = st.sidebar.number_input("± Depth Uncertainty (ft)", value=0.1, help="Assumed standard deviation of flood depth error (used only in Monte Carlo)")
+value_sd = st.sidebar.number_input("± Crop Value Uncertainty (%)", value=10, help="Assumed variability in per-acre crop values (used only in Monte Carlo)")
 
 crop_inputs, label_to_filename, label_to_metadata = {}, {}, {}
 
@@ -48,8 +48,8 @@ if crop_file:
 
     st.markdown("### 🌱 Crop Values and Growing Seasons")
     for code in codes:
-        val = st.number_input(f"Crop {code} – $/Acre", value=5500, step=100, key=f"val_{code}")
-        season = st.multiselect(f"Crop {code} – Growing Months", list(range(1, 13)), default=list(range(4, 10)), key=f"season_{code}")
+        val = st.number_input(f"Crop {code} – $/Acre", value=5500, step=100, key=f"val_{code}", help="Enter average crop value per acre for this code")
+        season = st.multiselect(f"Crop {code} – Growing Months", list(range(1, 13)), default=list(range(4, 10)), key=f"season_{code}", help="Choose the active growing months when this crop is vulnerable to flooding")
         crop_inputs[code] = {"Value": val, "GrowingSeason": season}
 
 # Process flood rasters
@@ -61,8 +61,8 @@ if depth_files:
         with open(path, "wb") as out:
             out.write(f.read())
         depth_paths.append(path)
-        rp = st.number_input(f"Return Period: {f.name}", min_value=1, value=100, key=f"rp_{i}")
-        mo = st.number_input(f"Flood Month: {f.name}", min_value=1, max_value=12, value=6, key=f"mo_{i}")
+        rp = st.number_input(f"Return Period: {f.name}", min_value=1, value=100, key=f"rp_{i}", help="How often this flood event is expected to occur (e.g., 100 for 1-in-100 year flood)")
+        mo = st.number_input(f"Flood Month: {f.name}", min_value=1, max_value=12, value=6, key=f"mo_{i}", help="Month of flood to compare against crop growing season")
         label = os.path.splitext(os.path.basename(path))[0]
         label_to_filename[label] = f.name
         label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
