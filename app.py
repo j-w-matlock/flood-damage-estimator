@@ -23,7 +23,7 @@ if st.sidebar.button("🔁 Reset App"):
     st.rerun()
 
 # Sidebar Inputs
-codex/add-text-input-for-.tif-file-paths
+# codex/add-text-input-for-.tif-file-paths
 st.sidebar.header("🛠️ Settings")
 mode = st.sidebar.radio(
     "Select Analysis Mode:",
