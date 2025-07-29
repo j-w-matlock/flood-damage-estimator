@@ -23,7 +23,6 @@ if st.sidebar.button("🔁 Reset App"):
     st.rerun()
 
 # Sidebar Inputs
-codex/add-text-input-for-.tif-file-paths
 st.sidebar.header("🛠️ Settings")
 mode = st.sidebar.radio(
     "Select Analysis Mode:",
@@ -53,37 +52,6 @@ depth_files = st.sidebar.file_uploader(
     accept_multiple_files=True,
     help="Upload one or more flood depth raster files (in feet)",
 )
-
-st.sidebar.header("🛠️ Settings")
-mode = st.sidebar.radio(
-    "Select Analysis Mode:",
-    ["Direct Damages", "Monte Carlo Simulation"],
-    help="Choose whether to run a straightforward flood loss calculation (Direct Damages) or include uncertainty using random simulations (Monte Carlo Simulation)",
-)
-
-# Allow users to provide on-disk rasters to bypass Streamlit's upload limits
-crop_path_input = st.sidebar.text_input(
-    "Crop Raster Path (optional)",
-    help="Enter a path to a local .tif file instead of uploading",
-)
-depth_paths_input = st.sidebar.text_area(
-    "Flood Raster Paths (optional, one per line)",
-    help="Enter paths to local .tif files instead of uploading",
-)
-
-# File uploaders remain for convenience when paths are not supplied
-crop_file = st.sidebar.file_uploader(
-    "🌾 USDA Cropland Raster",
-    type=["tif", "img"],
-    help="Upload a CropScape raster that defines crop type per pixel",
-)
-depth_files = st.sidebar.file_uploader(
-    "🌊 Flood Depth Grids",
-    type=["tif"],
-    accept_multiple_files=True,
-    help="Upload one or more flood depth raster files (in feet)",
-)
-main
 period_years = st.sidebar.number_input("📆 Analysis Period (Years)", min_value=1, value=50, help="Used for context in planning studies; not required for EAD computation")
 samples = st.sidebar.number_input("🎲 Monte Carlo Iterations", min_value=10, value=100, help="Number of random simulations per crop type to estimate uncertainty")
 depth_sd = st.sidebar.number_input("± Depth Uncertainty (ft)", value=0.1, help="Assumed standard deviation of flood depth error (used only in Monte Carlo)")
@@ -91,7 +59,6 @@ value_sd = st.sidebar.number_input("± Crop Value Uncertainty (%)", value=10, he
 
 crop_inputs, label_to_filename, label_to_metadata = {}, {}, {}
 
-codex/add-text-input-for-.tif-file-paths
 # Process cropland raster
 arr = None
 if crop_path_input:
@@ -183,110 +150,12 @@ elif depth_files:
     st.session_state.depth_paths = depth_paths
     st.session_state.label_map = label_to_filename
     st.session_state.label_metadata = label_to_metadata
-
-# Process cropland raster
-arr = None
-if crop_path_input:
-    crop_path = crop_path_input
-    st.session_state.crop_path = crop_path
-    with rasterio.open(crop_path) as src:
-        arr = src.read(1)
-elif crop_file:
-    crop_path = tempfile.NamedTemporaryFile(delete=False, suffix=".tif").name
-    with open(crop_path, "wb") as f:
-        f.write(crop_file.read())
-    st.session_state.crop_path = crop_path
-    with rasterio.open(crop_path) as src:
-        arr = src.read(1)
-
-if arr is not None:
-    counts = Counter(arr.flatten())
-    codes = [c for c, _ in counts.most_common(10) if c != 0]
-    st.markdown("### 🌱 Crop Values and Growing Seasons")
-    for code in codes:
-        val = st.number_input(
-            f"Crop {code} – $/Acre",
-            value=5500,
-            step=100,
-            key=f"val_{code}",
-            help="Enter average crop value per acre for this code",
-        )
-        season = st.multiselect(
-            f"Crop {code} – Growing Months",
-            list(range(1, 13)),
-            default=list(range(4, 10)),
-            key=f"season_{code}",
-            help="Choose the active growing months when this crop is vulnerable to flooding",
-        )
-        crop_inputs[code] = {"Value": val, "GrowingSeason": season}
-
-# Process flood rasters
-if depth_paths_input:
-    st.markdown("### ⚙️ Flood Raster Settings")
-    depth_paths = [p.strip() for p in depth_paths_input.splitlines() if p.strip()]
-    for i, path in enumerate(depth_paths):
-        rp = st.number_input(
-            f"Return Period: {os.path.basename(path)}",
-            min_value=1,
-            value=100,
-            key=f"rp_txt_{i}",
-            help="How often this flood event is expected to occur (e.g., 100 for 1-in-100 year flood)",
-        )
-        mo = st.number_input(
-            f"Flood Month: {os.path.basename(path)}",
-            min_value=1,
-            max_value=12,
-            value=6,
-            key=f"mo_txt_{i}",
-            help="Month of flood to compare against crop growing season",
-        )
-        label = os.path.splitext(os.path.basename(path))[0]
-        label_to_filename[label] = os.path.basename(path)
-        label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
-    st.session_state.depth_paths = depth_paths
-    st.session_state.label_map = label_to_filename
-    st.session_state.label_metadata = label_to_metadata
-elif depth_files:
-    st.markdown("### ⚙️ Flood Raster Settings")
-    depth_paths = []
-    for i, f in enumerate(depth_files):
-        path = tempfile.NamedTemporaryFile(delete=False, suffix=".tif").name
-        with open(path, "wb") as out:
-            out.write(f.read())
-        depth_paths.append(path)
-        rp = st.number_input(
-            f"Return Period: {f.name}",
-            min_value=1,
-            value=100,
-            key=f"rp_{i}",
-            help="How often this flood event is expected to occur (e.g., 100 for 1-in-100 year flood)",
-        )
-        mo = st.number_input(
-            f"Flood Month: {f.name}",
-            min_value=1,
-            max_value=12,
-            value=6,
-            key=f"mo_{i}",
-            help="Month of flood to compare against crop growing season",
-        )
-        label = os.path.splitext(os.path.basename(path))[0]
-        label_to_filename[label] = f.name
-        label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
-    st.session_state.depth_paths = depth_paths
-    st.session_state.label_map = label_to_filename
-    st.session_state.label_metadata = label_to_metadata
-main
 
 # Direct Damages Mode
 if mode == "Direct Damages":
     if st.button("🚀 Run Flood Damage Estimator"):
-codex/add-text-input-for-.tif-file-paths
         if not ((crop_file or crop_path_input) and (depth_files or depth_paths_input)):
             st.error("❌ Please provide both cropland and flood rasters.")
-
-        if not ((crop_file or crop_path_input) and (depth_files or depth_paths_input)):
-            st.error("❌ Please provide both cropland and flood rasters.")
-main
         else:
             with st.spinner("🔄 Processing flood damages..."):
                 try:
@@ -312,7 +181,14 @@ main
 
         for label, df in st.session_state.summaries.items():
             st.subheader(f"📋 Summary for {label}")
-@@ -112,52 +192,52 @@ if mode == "Direct Damages":
+            with st.expander("ℹ️ Column Definitions"):
+                st.markdown("""
+                - **CropCode**: CropScape code for crop type.
+                - **FloodedAcres**: Area affected (1 pixel ≈ 0.222 acres).
+                - **ValuePerAcre**: Input value per acre for the crop.
+                - **DollarsLost**: Total crop damage.
+                - **EAD**: Expected Annual Damage = DollarsLost ÷ ReturnPeriod.
+                """)
             st.dataframe(df)
 
         if st.session_state.diagnostics:
@@ -338,13 +214,8 @@ main
 # Monte Carlo Mode
 elif mode == "Monte Carlo Simulation":
     if st.button("🧪 Run Monte Carlo Simulation"):
- codex/add-text-input-for-.tif-file-paths
         if not ((crop_file or crop_path_input) and (depth_files or depth_paths_input)):
             st.error("❌ Please provide both cropland and flood rasters.")
-
-        if not ((crop_file or crop_path_input) and (depth_files or depth_paths_input)):
-            st.error("❌ Please provide both cropland and flood rasters.")
- main
         else:
             with st.spinner("🔬 Running Monte Carlo..."):
                 try:
@@ -370,3 +241,28 @@ elif mode == "Monte Carlo Simulation":
 
                     for label, df in mc_results.items():
                         st.subheader(f"🧪 MC Summary for {label}")
+                        with st.expander("ℹ️ Column Definitions"):
+                            st.markdown("""
+                            - **CropCode**: CropScape code for crop type.
+                            - **EAD_MC_Mean**: Mean simulated EAD from Monte Carlo.
+                            - **EAD_MC_5th / 95th**: Uncertainty bounds (percentiles).
+                            - **Original_EAD**: Deterministic EAD value for comparison.
+                            """)
+                        st.dataframe(df)
+
+                    with pd.ExcelWriter(result_path, mode="a", engine="openpyxl") as writer:
+                        for label, df in mc_results.items():
+                            df.to_excel(writer, sheet_name=f"MC_{label}", index=False)
+
+                    with open(result_path, "rb") as file:
+                        st.download_button(
+                            label="📥 Download Monte Carlo Excel File",
+                            data=file,
+                            file_name=os.path.basename(result_path),
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+
+                    st.success("✅ Monte Carlo analysis complete.")
+
+                except Exception as e:
+                    st.error(f"⚠️ Monte Carlo error: {e}")
