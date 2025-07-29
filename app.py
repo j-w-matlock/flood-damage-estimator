@@ -23,7 +23,6 @@ if st.sidebar.button("🔁 Reset App"):
     st.rerun()
 
 # Sidebar Inputs
-
 st.sidebar.header("🛠️ Settings")
 mode = st.sidebar.radio(
     "Select Analysis Mode:",
@@ -53,68 +52,6 @@ depth_files = st.sidebar.file_uploader(
     accept_multiple_files=True,
     help="Upload one or more flood depth raster files (in feet)",
 )
-
-# codex/add-text-input-for-.tif-file-paths
-st.sidebar.header("🛠️ Settings")
-mode = st.sidebar.radio(
-    "Select Analysis Mode:",
-    ["Direct Damages", "Monte Carlo Simulation"],
-    help="Choose whether to run a straightforward flood loss calculation (Direct Damages) or include uncertainty using random simulations (Monte Carlo Simulation)",
-)
-
-# Allow users to provide on-disk rasters to bypass Streamlit's upload limits
-crop_path_input = st.sidebar.text_input(
-    "Crop Raster Path (optional)",
-    help="Enter a path to a local .tif file instead of uploading",
-)
-depth_paths_input = st.sidebar.text_area(
-    "Flood Raster Paths (optional, one per line)",
-    help="Enter paths to local .tif files instead of uploading",
-)
-
-# File uploaders remain for convenience when paths are not supplied
-crop_file = st.sidebar.file_uploader(
-    "🌾 USDA Cropland Raster",
-    type=["tif", "img"],
-    help="Upload a CropScape raster that defines crop type per pixel",
-)
-depth_files = st.sidebar.file_uploader(
-    "🌊 Flood Depth Grids",
-    type=["tif"],
-    accept_multiple_files=True,
-    help="Upload one or more flood depth raster files (in feet)",
-)
-
-st.sidebar.header("🛠️ Settings")
-mode = st.sidebar.radio(
-    "Select Analysis Mode:",
-    ["Direct Damages", "Monte Carlo Simulation"],
-    help="Choose whether to run a straightforward flood loss calculation (Direct Damages) or include uncertainty using random simulations (Monte Carlo Simulation)",
-)
-
-# Allow users to provide on-disk rasters to bypass Streamlit's upload limits
-crop_path_input = st.sidebar.text_input(
-    "Crop Raster Path (optional)",
-    help="Enter a path to a local .tif file instead of uploading",
-)
-depth_paths_input = st.sidebar.text_area(
-    "Flood Raster Paths (optional, one per line)",
-    help="Enter paths to local .tif files instead of uploading",
-)
-
-# File uploaders remain for convenience when paths are not supplied
-crop_file = st.sidebar.file_uploader(
-    "🌾 USDA Cropland Raster",
-    type=["tif", "img"],
-    help="Upload a CropScape raster that defines crop type per pixel",
-)
-depth_files = st.sidebar.file_uploader(
-    "🌊 Flood Depth Grids",
-    type=["tif"],
-    accept_multiple_files=True,
-    help="Upload one or more flood depth raster files (in feet)",
-)
-main
 period_years = st.sidebar.number_input("📆 Analysis Period (Years)", min_value=1, value=50, help="Used for context in planning studies; not required for EAD computation")
 samples = st.sidebar.number_input("🎲 Monte Carlo Iterations", min_value=10, value=100, help="Number of random simulations per crop type to estimate uncertainty")
 depth_sd = st.sidebar.number_input("± Depth Uncertainty (ft)", value=0.1, help="Assumed standard deviation of flood depth error (used only in Monte Carlo)")
