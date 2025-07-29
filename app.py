@@ -30,6 +30,7 @@ mode = st.sidebar.radio(
     help="Choose whether to run a straightforward flood loss calculation (Direct Damages) or include uncertainty using random simulations (Monte Carlo Simulation)",
 )
 
+# Allow users to provide on-disk rasters to bypass Streamlit's upload limits
 crop_path_input = st.sidebar.text_input(
     "Crop Raster Path (optional)",
     help="Enter a path to a local .tif file instead of uploading",
@@ -39,6 +40,7 @@ depth_paths_input = st.sidebar.text_area(
     help="Enter paths to local .tif files instead of uploading",
 )
 
+# File uploaders remain for convenience when paths are not supplied
 crop_file = st.sidebar.file_uploader(
     "🌾 USDA Cropland Raster",
     type=["tif", "img"],
@@ -60,13 +62,10 @@ crop_inputs, label_to_filename, label_to_metadata = {}, {}, {}
 # Process cropland raster
 arr = None
 if crop_path_input:
-    if not os.path.exists(crop_path_input):
-        st.error(f"❌ Crop raster path not found:\n{crop_path_input}")
-    else:
-        crop_path = crop_path_input
-        st.session_state.crop_path = crop_path
-        with rasterio.open(crop_path) as src:
-            arr = src.read(1)
+    crop_path = crop_path_input
+    st.session_state.crop_path = crop_path
+    with rasterio.open(crop_path) as src:
+        arr = src.read(1)
 elif crop_file:
     crop_path = tempfile.NamedTemporaryFile(delete=False, suffix=".tif").name
     with open(crop_path, "wb") as f:
@@ -96,39 +95,32 @@ if arr is not None:
         )
         crop_inputs[code] = {"Value": val, "GrowingSeason": season}
 
-# Process flood rasters from path input
+# Process flood rasters
 if depth_paths_input:
+    st.markdown("### ⚙️ Flood Raster Settings")
     depth_paths = [p.strip() for p in depth_paths_input.splitlines() if p.strip()]
-    missing = [p for p in depth_paths if not os.path.exists(p)]
-
-    if missing:
-        st.error(f"❌ The following flood raster paths were not found:\n\n" + "\n".join(missing))
-    else:
-        st.markdown("### ⚙️ Flood Raster Settings")
-        for i, path in enumerate(depth_paths):
-            rp = st.number_input(
-                f"Return Period: {os.path.basename(path)}",
-                min_value=1,
-                value=100,
-                key=f"rp_txt_{i}",
-                help="How often this flood event is expected to occur (e.g., 100 for 1-in-100 year flood)",
-            )
-            mo = st.number_input(
-                f"Flood Month: {os.path.basename(path)}",
-                min_value=1,
-                max_value=12,
-                value=6,
-                key=f"mo_txt_{i}",
-                help="Month of flood to compare against crop growing season",
-            )
-            label = os.path.splitext(os.path.basename(path))[0]
-            label_to_filename[label] = os.path.basename(path)
-            label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
-        st.session_state.depth_paths = depth_paths
-        st.session_state.label_map = label_to_filename
-        st.session_state.label_metadata = label_to_metadata
-
-# Process flood rasters from file uploads
+    for i, path in enumerate(depth_paths):
+        rp = st.number_input(
+            f"Return Period: {os.path.basename(path)}",
+            min_value=1,
+            value=100,
+            key=f"rp_txt_{i}",
+            help="How often this flood event is expected to occur (e.g., 100 for 1-in-100 year flood)",
+        )
+        mo = st.number_input(
+            f"Flood Month: {os.path.basename(path)}",
+            min_value=1,
+            max_value=12,
+            value=6,
+            key=f"mo_txt_{i}",
+            help="Month of flood to compare against crop growing season",
+        )
+        label = os.path.splitext(os.path.basename(path))[0]
+        label_to_filename[label] = os.path.basename(path)
+        label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
+    st.session_state.depth_paths = depth_paths
+    st.session_state.label_map = label_to_filename
+    st.session_state.label_metadata = label_to_metadata
 elif depth_files:
     st.markdown("### ⚙️ Flood Raster Settings")
     depth_paths = []
