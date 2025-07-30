@@ -4,6 +4,8 @@ import pandas as pd
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.warp import calculate_default_transform, reproject
+from rasterio.features import rasterize
+import geopandas as gpd
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 
@@ -38,20 +40,74 @@ def align_crop_to_depth(crop_path, depth_path):
 
         return reprojected, profile
 
-def process_flood_damage(crop_path, depth_paths, output_dir, period_years, crop_inputs, flood_metadata):
+def rasterize_polygon_to_array(polygon_path, crop_path, depth_value=0.5):
+    """Rasterize polygons to match the crop raster.
+
+    Parameters
+    ----------
+    polygon_path : str
+        Path to a vector file (Shapefile zip, GeoJSON, or KML).
+    crop_path : str
+        Reference crop raster used for shape/transform.
+    depth_value : float, optional
+        Value assigned to polygon cells, by default 0.5 (6 inches).
+
+    Returns
+    -------
+    numpy.ndarray
+        Array in the crop raster's shape with polygons burned in.
+    """
+
+    with rasterio.open(crop_path) as ref:
+        transform = ref.transform
+        crs = ref.crs
+        width = ref.width
+        height = ref.height
+
+    if polygon_path.lower().endswith(".zip"):
+        gdf = gpd.read_file(f"zip://{polygon_path}")
+    else:
+        gdf = gpd.read_file(polygon_path)
+
+    if gdf.crs != crs:
+        gdf = gdf.to_crs(crs)
+
+    shapes = [(geom, depth_value) for geom in gdf.geometry if geom is not None]
+    if not shapes:
+        return np.zeros((height, width), dtype=float)
+
+    return rasterize(
+        shapes=shapes,
+        out_shape=(height, width),
+        fill=0,
+        transform=transform,
+        dtype=float,
+    )
+
+def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop_inputs, flood_metadata):
     os.makedirs(output_dir, exist_ok=True)
     summaries, diagnostics, damage_rasters = {}, [], {}
 
-    for depth_path in depth_paths:
-        label = os.path.splitext(os.path.basename(depth_path))[0]
-        meta = flood_metadata.get(label, {})
-        return_period = meta.get("return_period", 100)
-        flood_month = meta.get("flood_month", 6)
+    for item in depth_inputs:
+        if isinstance(item, tuple):
+            label, depth_arr = item
+            meta = flood_metadata.get(label, {})
+            return_period = meta.get("return_period", 100)
+            flood_month = meta.get("flood_month", 6)
+            with rasterio.open(crop_path) as src:
+                aligned_crop = src.read(1)
+                crop_profile = src.profile.copy()
+        else:
+            depth_path = item
+            label = os.path.splitext(os.path.basename(depth_path))[0]
+            meta = flood_metadata.get(label, {})
+            return_period = meta.get("return_period", 100)
+            flood_month = meta.get("flood_month", 6)
 
-        aligned_crop, crop_profile = align_crop_to_depth(crop_path, depth_path)
+            aligned_crop, crop_profile = align_crop_to_depth(crop_path, depth_path)
 
-        with rasterio.open(depth_path) as depth_src:
-            depth_arr = depth_src.read(1, out_shape=(aligned_crop.shape), resampling=Resampling.bilinear)
+            with rasterio.open(depth_path) as depth_src:
+                depth_arr = depth_src.read(1, out_shape=(aligned_crop.shape), resampling=Resampling.bilinear)
 
         damage_arr = np.zeros_like(aligned_crop, dtype=float)
         rows = []

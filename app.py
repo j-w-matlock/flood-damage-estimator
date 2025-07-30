@@ -12,7 +12,7 @@ st.set_page_config(layout="wide")
 st.title("🌾 Agricultural Flood Damage Estimator")
 
 # Session state init
-for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_paths", "damage_rasters", "label_map", "label_metadata"]:
+for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_inputs", "damage_rasters", "label_map", "label_metadata"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
@@ -36,6 +36,10 @@ crop_file = st.sidebar.file_uploader(
 depth_files = st.sidebar.file_uploader(
     "🌊 Flood Depth Grids", type=["tif"], accept_multiple_files=True,
     help="Upload one or more flood depth raster files (in feet)"
+)
+polygon_file = st.sidebar.file_uploader(
+    "📐 Flood Extent Polygon", type=["zip", "geojson", "kml"],
+    help="Upload a polygon defining flooded areas (zipped Shapefile, GeoJSON, or KML)"
 )
 period_years = st.sidebar.number_input(
     "📆 Analysis Period (Years)", min_value=1, value=50,
@@ -84,44 +88,69 @@ if crop_file:
         )
         crop_inputs[code] = {"Value": val, "GrowingSeason": season}
 
-# Process flood rasters
-if depth_files:
+# Process flood rasters or polygon
+if depth_files or polygon_file:
     st.markdown("### ⚙️ Flood Raster Settings")
-    depth_paths = []
-    for i, f in enumerate(depth_files):
-        path = tempfile.NamedTemporaryFile(delete=False, suffix=".tif").name
-        with open(path, "wb") as out:
-            out.write(f.read())
-        depth_paths.append(path)
+    depth_inputs = []
+
+    if depth_files:
+        for i, f in enumerate(depth_files):
+            path = tempfile.NamedTemporaryFile(delete=False, suffix=".tif").name
+            with open(path, "wb") as out:
+                out.write(f.read())
+            depth_inputs.append(path)
+            rp = st.number_input(
+                f"Return Period: {f.name}", min_value=1, value=100,
+                key=f"rp_{i}",
+                help="How often this flood event is expected to occur (e.g., 100 for 1-in-100 year flood)"
+            )
+            mo = st.number_input(
+                f"Flood Month: {f.name}", min_value=1, max_value=12,
+                value=6, key=f"mo_{i}",
+                help="Month of flood to compare against crop growing season"
+            )
+            label = os.path.splitext(os.path.basename(path))[0]
+            label_to_filename[label] = f.name
+            label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
+
+    if polygon_file and crop_file:
+        poly_ext = os.path.splitext(polygon_file.name)[1]
+        poly_path = tempfile.NamedTemporaryFile(delete=False, suffix=poly_ext).name
+        with open(poly_path, "wb") as out:
+            out.write(polygon_file.read())
+
         rp = st.number_input(
-            f"Return Period: {f.name}", min_value=1, value=100,
-            key=f"rp_{i}",
-            help="How often this flood event is expected to occur (e.g., 100 for 1-in-100 year flood)"
+            f"Return Period: {polygon_file.name}", min_value=1, value=100,
+            key="rp_polygon",
+            help="How often this flood event is expected to occur"
         )
         mo = st.number_input(
-            f"Flood Month: {f.name}", min_value=1, max_value=12,
-            value=6, key=f"mo_{i}",
+            f"Flood Month: {polygon_file.name}", min_value=1, max_value=12,
+            value=6, key="mo_polygon",
             help="Month of flood to compare against crop growing season"
         )
-        label = os.path.splitext(os.path.basename(path))[0]
-        label_to_filename[label] = f.name
+
+        depth_arr = rasterize_polygon_to_array(poly_path, st.session_state.crop_path)
+        label = os.path.splitext(os.path.basename(poly_path))[0]
+        depth_inputs.append((label, depth_arr))
+        label_to_filename[label] = polygon_file.name
         label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
 
-    st.session_state.depth_paths = depth_paths
+    st.session_state.depth_inputs = depth_inputs
     st.session_state.label_map = label_to_filename
     st.session_state.label_metadata = label_to_metadata
 
 # Direct Damages Mode
 if mode == "Direct Damages":
     if st.button("🚀 Run Flood Damage Estimator"):
-        if not (crop_file and depth_files):
-            st.error("❌ Please upload both cropland and flood rasters.")
+        if not (crop_file and (depth_files or polygon_file)):
+            st.error("❌ Please upload a cropland raster and at least one flood source.")
         else:
             with st.spinner("🔄 Processing flood damages..."):
                 try:
                     result_path, summaries, diagnostics, damage_rasters = process_flood_damage(
                         st.session_state.crop_path,
-                        st.session_state.depth_paths,
+                        st.session_state.depth_inputs,
                         tempfile.mkdtemp(),
                         period_years,
                         crop_inputs,
@@ -174,14 +203,14 @@ if mode == "Direct Damages":
 # Monte Carlo Mode
 elif mode == "Monte Carlo Simulation":
     if st.button("🧪 Run Monte Carlo Simulation"):
-        if not (crop_file and depth_files):
-            st.error("❌ Please upload both cropland and flood rasters.")
+        if not (crop_file and (depth_files or polygon_file)):
+            st.error("❌ Please upload a cropland raster and at least one flood source.")
         else:
             with st.spinner("🔬 Running Monte Carlo..."):
                 try:
                     result_path, summaries, diagnostics, damage_rasters = process_flood_damage(
                         st.session_state.crop_path,
-                        st.session_state.depth_paths,
+                        st.session_state.depth_inputs,
                         tempfile.mkdtemp(),
                         period_years,
                         crop_inputs,
