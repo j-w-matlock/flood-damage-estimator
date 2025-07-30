@@ -10,16 +10,16 @@ from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 
 def align_crop_to_depth(crop_path, depth_path):
-    with rasterio.open(depth_path) as depth_src:
+    with rasterio.open(depth_path) as depth_src, rasterio.open(crop_path) as crop_src:
         dst_crs = depth_src.crs
         dst_transform, width, height = calculate_default_transform(
-            rasterio.open(crop_path).crs,
+            crop_src.crs,
             dst_crs,
-            rasterio.open(crop_path).width,
-            rasterio.open(crop_path).height,
-            *rasterio.open(crop_path).bounds
+            crop_src.width,
+            crop_src.height,
+            *crop_src.bounds
         )
-        profile = rasterio.open(crop_path).profile.copy()
+        profile = crop_src.profile.copy()
         profile.update({
             'crs': dst_crs,
             'transform': dst_transform,
@@ -29,10 +29,10 @@ def align_crop_to_depth(crop_path, depth_path):
 
         reprojected = np.zeros((height, width), dtype=np.uint16)
         reproject(
-            source=rasterio.open(crop_path).read(1),
+            source=crop_src.read(1),
             destination=reprojected,
-            src_transform=rasterio.open(crop_path).transform,
-            src_crs=rasterio.open(crop_path).crs,
+            src_transform=crop_src.transform,
+            src_crs=crop_src.crs,
             dst_transform=dst_transform,
             dst_crs=dst_crs,
             resampling=Resampling.nearest
