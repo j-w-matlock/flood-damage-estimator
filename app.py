@@ -32,7 +32,6 @@ for key in [
         st.session_state[key] = [] if key == "temp_files" else None
 
 
-def cleanup_temp_files():
     """Remove temporary files tracked in the session."""
     files = st.session_state.get("temp_files") or []
     for path in files:
@@ -50,7 +49,6 @@ def cleanup_temp_dir():
 
 # Reset
 if st.sidebar.button("🔁 Reset App"):
-    cleanup_temp_files()
     cleanup_temp_dir()
     for key in list(st.session_state.keys()):
         del st.session_state[key]
@@ -199,7 +197,6 @@ if mode == "Direct Damages":
                     st.session_state.summaries = summaries
                     st.session_state.diagnostics = diagnostics
                     st.session_state.damage_rasters = damage_rasters
-                    cleanup_temp_files()
                     st.success("✅ Direct damage analysis complete.")
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
@@ -293,7 +290,6 @@ elif mode == "Monte Carlo Simulation":
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         )
 
-                    cleanup_temp_files()
                     st.success("✅ Monte Carlo analysis complete.")
 
                 except Exception as e:
