@@ -3,7 +3,11 @@ import os
 import tempfile
 import pandas as pd
 import rasterio
-from utils.processing import process_flood_damage, run_monte_carlo
+from utils.processing import (
+    process_flood_damage,
+    run_monte_carlo,
+    rasterize_polygon_to_array,
+)
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import Counter
