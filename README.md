@@ -24,7 +24,7 @@ If paths are supplied, the application reads the files directly with `rasterio`,
 
 ## Polygon Uploads
 
-In place of a flood depth raster you may also upload a polygon layer (zipped Shapefile, GeoJSON, or KML). The polygon is rasterized to the crop raster's grid and assigned a uniform depth of **0.5&nbsp;ft** (6&nbsp;inches). The resulting depth array is processed just like any other flood raster when computing damages.
+You may also provide a polygon layer (zipped Shapefile, GeoJSON, or KML) instead of a flood depth raster. Cells of the crop raster inside the polygon are assumed to receive **0.5&nbsp;ft** (6&nbsp;inches) of flooding. The original file names of uploaded rasters and polygons become the labels in the output Excel workbook.
 
 
 ## Running Tests

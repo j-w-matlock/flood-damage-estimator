@@ -131,7 +131,8 @@ if depth_files or polygon_file:
             path = tempfile.NamedTemporaryFile(delete=False, suffix=".tif").name
             with open(path, "wb") as out:
                 out.write(f.read())
-            depth_inputs.append(path)
+            label = os.path.splitext(os.path.basename(f.name))[0]
+            depth_inputs.append((label, path))
             st.session_state.temp_files.append(path)
             rp = st.number_input(
                 f"Return Period: {f.name}", min_value=1, value=100,
@@ -143,7 +144,6 @@ if depth_files or polygon_file:
                 value=6, key=f"mo_{i}",
                 help="Month of flood to compare against crop growing season"
             )
-            label = os.path.splitext(os.path.basename(path))[0]
             label_to_filename[label] = f.name
             label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
 
@@ -166,7 +166,7 @@ if depth_files or polygon_file:
         )
 
         depth_arr = rasterize_polygon_to_array(poly_path, st.session_state.crop_path)
-        label = os.path.splitext(os.path.basename(poly_path))[0]
+        label = os.path.splitext(os.path.basename(polygon_file.name))[0]
         depth_inputs.append((label, depth_arr))
         label_to_filename[label] = polygon_file.name
         label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
