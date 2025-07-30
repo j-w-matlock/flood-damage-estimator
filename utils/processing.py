@@ -103,12 +103,20 @@ def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop
 
     for item in depth_inputs:
         if isinstance(item, tuple):
-            label, depth_arr = item
+            label, data = item
             meta = flood_metadata.get(label, {})
             return_period = meta.get("return_period", 100)
             flood_month = meta.get("flood_month", 6)
-            aligned_crop = base_crop_arr
-            crop_profile = base_crop_profile
+
+            if isinstance(data, np.ndarray):
+                depth_arr = data
+                aligned_crop = base_crop_arr
+                crop_profile = base_crop_profile
+            else:
+                depth_path = data
+                aligned_crop, crop_profile = align_crop_to_depth(crop_path, depth_path)
+                with rasterio.open(depth_path) as depth_src:
+                    depth_arr = depth_src.read(1, out_shape=(aligned_crop.shape), resampling=Resampling.bilinear)
         else:
             depth_path = item
             label = os.path.splitext(os.path.basename(depth_path))[0]
