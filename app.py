@@ -12,12 +12,42 @@ st.set_page_config(layout="wide")
 st.title("🌾 Agricultural Flood Damage Estimator")
 
 # Session state init
-for key in ["result_path", "summaries", "diagnostics", "crop_path", "depth_inputs", "damage_rasters", "label_map", "label_metadata"]:
+for key in [
+    "result_path",
+    "summaries",
+    "diagnostics",
+    "crop_path",
+    "depth_inputs",
+    "damage_rasters",
+    "label_map",
+    "label_metadata",
+    "temp_files",
+    "temp_dir",
+]:
     if key not in st.session_state:
-        st.session_state[key] = None
+        st.session_state[key] = [] if key == "temp_files" else None
+
+
+def cleanup_temp_files():
+    """Remove temporary files tracked in the session."""
+    files = st.session_state.get("temp_files") or []
+    for path in files:
+        if path and os.path.exists(path):
+            os.remove(path)
+    st.session_state["temp_files"] = []
+
+
+def cleanup_temp_dir():
+    """Remove the temporary directory used for outputs."""
+    tmp = st.session_state.get("temp_dir")
+    if tmp:
+        tmp.cleanup()
+    st.session_state["temp_dir"] = None
 
 # Reset
 if st.sidebar.button("🔁 Reset App"):
+    cleanup_temp_files()
+    cleanup_temp_dir()
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
@@ -66,6 +96,7 @@ if crop_file:
     with open(crop_path, "wb") as f:
         f.write(crop_file.read())
     st.session_state.crop_path = crop_path
+    st.session_state.temp_files.append(crop_path)
 
     with rasterio.open(crop_path) as src:
         arr = src.read(1)
@@ -99,6 +130,7 @@ if depth_files or polygon_file:
             with open(path, "wb") as out:
                 out.write(f.read())
             depth_inputs.append(path)
+            st.session_state.temp_files.append(path)
             rp = st.number_input(
                 f"Return Period: {f.name}", min_value=1, value=100,
                 key=f"rp_{i}",
@@ -118,6 +150,7 @@ if depth_files or polygon_file:
         poly_path = tempfile.NamedTemporaryFile(delete=False, suffix=poly_ext).name
         with open(poly_path, "wb") as out:
             out.write(polygon_file.read())
+        st.session_state.temp_files.append(poly_path)
 
         rp = st.number_input(
             f"Return Period: {polygon_file.name}", min_value=1, value=100,
@@ -146,12 +179,15 @@ if mode == "Direct Damages":
         if not (crop_file and (depth_files or polygon_file)):
             st.error("❌ Please upload a cropland raster and at least one flood source.")
         else:
+            cleanup_temp_files()
+            cleanup_temp_dir()
+            st.session_state.temp_dir = tempfile.TemporaryDirectory()
             with st.spinner("🔄 Processing flood damages..."):
                 try:
                     result_path, summaries, diagnostics, damage_rasters = process_flood_damage(
                         st.session_state.crop_path,
                         st.session_state.depth_inputs,
-                        tempfile.mkdtemp(),
+                        st.session_state.temp_dir.name,
                         period_years,
                         crop_inputs,
                         st.session_state.label_metadata
@@ -160,6 +196,7 @@ if mode == "Direct Damages":
                     st.session_state.summaries = summaries
                     st.session_state.diagnostics = diagnostics
                     st.session_state.damage_rasters = damage_rasters
+                    cleanup_temp_files()
                     st.success("✅ Direct damage analysis complete.")
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
@@ -206,12 +243,15 @@ elif mode == "Monte Carlo Simulation":
         if not (crop_file and (depth_files or polygon_file)):
             st.error("❌ Please upload a cropland raster and at least one flood source.")
         else:
+            cleanup_temp_files()
+            cleanup_temp_dir()
+            st.session_state.temp_dir = tempfile.TemporaryDirectory()
             with st.spinner("🔬 Running Monte Carlo..."):
                 try:
                     result_path, summaries, diagnostics, damage_rasters = process_flood_damage(
                         st.session_state.crop_path,
                         st.session_state.depth_inputs,
-                        tempfile.mkdtemp(),
+                        st.session_state.temp_dir.name,
                         period_years,
                         crop_inputs,
                         st.session_state.label_metadata
@@ -251,6 +291,7 @@ elif mode == "Monte Carlo Simulation":
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         )
 
+                    cleanup_temp_files()
                     st.success("✅ Monte Carlo analysis complete.")
 
                 except Exception as e:
