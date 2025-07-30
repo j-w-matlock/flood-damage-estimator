@@ -183,7 +183,6 @@ if mode == "Direct Damages":
         if not (crop_file and (depth_files or polygon_file)):
             st.error("❌ Please upload a cropland raster and at least one flood source.")
         else:
-            cleanup_temp_files()
             cleanup_temp_dir()
             st.session_state.temp_dir = tempfile.TemporaryDirectory()
             with st.spinner("🔄 Processing flood damages..."):
@@ -247,7 +246,6 @@ elif mode == "Monte Carlo Simulation":
         if not (crop_file and (depth_files or polygon_file)):
             st.error("❌ Please upload a cropland raster and at least one flood source.")
         else:
-            cleanup_temp_files()
             cleanup_temp_dir()
             st.session_state.temp_dir = tempfile.TemporaryDirectory()
             with st.spinner("🔬 Running Monte Carlo..."):
