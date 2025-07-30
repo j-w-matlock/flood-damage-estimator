@@ -6,8 +6,15 @@ import os
 import numpy as np
 import rasterio
 from rasterio.transform import from_origin
+from shapely.geometry import box
+import geopandas as gpd
+import zipfile
 
-from utils.processing import align_crop_to_depth, process_flood_damage
+from utils.processing import (
+    align_crop_to_depth,
+    process_flood_damage,
+    rasterize_polygon_to_array,
+)
 
 
 def create_raster(path, array, crs, transform):
@@ -66,3 +73,26 @@ def test_process_flood_damage_generates_outputs(tmp_path):
     assert len(df) == 2
     assert diagnostics == []
     assert rasters["floodA"].shape == crop.shape
+
+
+def test_rasterize_polygon_zipped_shapefile(tmp_path):
+    crop = np.zeros((10, 10), dtype=np.uint16)
+    crop_path = tmp_path / "crop.tif"
+    create_raster(crop_path, crop, "EPSG:4326", from_origin(0, 10, 1, 1))
+
+    gdf = gpd.GeoDataFrame({"geometry": [box(2, 2, 5, 5)]}, crs="EPSG:4326")
+    shp_dir = tmp_path / "shp"
+    shp_dir.mkdir()
+    gdf.to_file(shp_dir / "poly.shp")
+
+    zip_path = tmp_path / "poly.zip"
+    with zipfile.ZipFile(zip_path, "w") as z:
+        for ext in ["shp", "shx", "dbf", "cpg", "prj"]:
+            f = shp_dir / f"poly.{ext}"
+            if f.exists():
+                z.write(f, arcname=f"poly.{ext}")
+
+    arr = rasterize_polygon_to_array(str(zip_path), str(crop_path))
+    assert arr.shape == crop.shape
+    assert arr.max() == 0.5
+    assert arr.sum() > 0
