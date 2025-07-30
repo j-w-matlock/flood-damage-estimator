@@ -97,15 +97,18 @@ def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop
     os.makedirs(output_dir, exist_ok=True)
     summaries, diagnostics, damage_rasters = {}, [], {}
 
+    with rasterio.open(crop_path) as base_crop_src:
+        base_crop_arr = base_crop_src.read(1)
+        base_crop_profile = base_crop_src.profile.copy()
+
     for item in depth_inputs:
         if isinstance(item, tuple):
             label, depth_arr = item
             meta = flood_metadata.get(label, {})
             return_period = meta.get("return_period", 100)
             flood_month = meta.get("flood_month", 6)
-            with rasterio.open(crop_path) as src:
-                aligned_crop = src.read(1)
-                crop_profile = src.profile.copy()
+            aligned_crop = base_crop_arr
+            crop_profile = base_crop_profile
         else:
             depth_path = item
             label = os.path.splitext(os.path.basename(depth_path))[0]
@@ -121,6 +124,8 @@ def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop
         damage_arr = np.zeros_like(aligned_crop, dtype=float)
         rows = []
 
+        damage_ratio = np.clip(depth_arr / FULL_DAMAGE_DEPTH_FT, 0, 1)
+
         for code, props in crop_inputs.items():
             if flood_month not in props["GrowingSeason"]:
                 diagnostics.append({"Flood": label, "CropCode": code, "Issue": "Out of season"})
@@ -132,7 +137,6 @@ def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop
                 continue
 
             value = props["Value"]
-            damage_ratio = np.clip(depth_arr / FULL_DAMAGE_DEPTH_FT, 0, 1)
             crop_damage = value * damage_ratio * mask
             avg_damage = crop_damage.sum()
             ead = avg_damage * (1 / return_period)
@@ -197,17 +201,16 @@ def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, d
         return_period = meta.get("return_period", 100)
         rows = []
         for _, row in df.iterrows():
-            sim = []
-            for _ in range(samples):
-                value = np.random.normal(row["ValuePerAcre"], row["ValuePerAcre"] * value_uncertainty_pct / 100)
-                depth_ratio = np.random.normal(1.0, depth_uncertainty_ft / FULL_DAMAGE_DEPTH_FT)
-                sim_loss = value * depth_ratio * row["FloodedAcres"]
-                sim.append(sim_loss * (1 / return_period))
+            value_sd = row["ValuePerAcre"] * value_uncertainty_pct / 100
+            value_samples = np.random.normal(row["ValuePerAcre"], value_sd, samples)
+            depth_samples = np.random.normal(1.0, depth_uncertainty_ft / FULL_DAMAGE_DEPTH_FT, samples)
+            losses = value_samples * depth_samples * row["FloodedAcres"] * (1 / return_period)
+
             rows.append({
                 "CropCode": row["CropCode"],
-                "EAD_MC_Mean": round(np.mean(sim), 2),
-                "EAD_MC_5th": round(np.percentile(sim, 5), 2),
-                "EAD_MC_95th": round(np.percentile(sim, 95), 2),
+                "EAD_MC_Mean": round(float(np.mean(losses)), 2),
+                "EAD_MC_5th": round(float(np.percentile(losses, 5)), 2),
+                "EAD_MC_95th": round(float(np.percentile(losses, 95)), 2),
                 "Original_EAD": row["EAD"]
             })
         results[flood] = pd.DataFrame(rows)
