@@ -30,7 +30,7 @@ mode = st.sidebar.radio(
     help="Choose whether to run a straightforward flood loss calculation (Direct Damages) or include uncertainty using random simulations (Monte Carlo Simulation)"
 )
 crop_file = st.sidebar.file_uploader(
-    "🌾 USDA Cropland Raster", type=["tif", "img"],
+    "🌾 USDA CropScape Raster", type=["tif", "img"],
     help="Upload a CropScape raster that defines crop type per pixel"
 )
 depth_files = st.sidebar.file_uploader(
