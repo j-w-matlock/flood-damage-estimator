@@ -25,3 +25,11 @@ If paths are supplied, the application reads the files directly with `rasterio`,
 ## Polygon Uploads
 
 In place of a flood depth raster you may also upload a polygon layer (zipped Shapefile, GeoJSON, or KML). The polygon is rasterized to the crop raster's grid and assigned a uniform depth of **0.5&nbsp;ft** (6&nbsp;inches). The resulting depth array is processed just like any other flood raster when computing damages.
+
+## Running Tests
+
+Unit tests are written with **pytest**. After installing the requirements simply run:
+
+```bash
+pytest
+```
