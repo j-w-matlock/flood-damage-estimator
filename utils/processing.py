@@ -9,6 +9,9 @@ import geopandas as gpd
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 
+# Depth in feet assumed to result in 100% crop damage
+FULL_DAMAGE_DEPTH_FT = 6.0
+
 def align_crop_to_depth(crop_path, depth_path):
     with rasterio.open(depth_path) as depth_src, rasterio.open(crop_path) as crop_src:
         dst_crs = depth_src.crs
@@ -85,6 +88,12 @@ def rasterize_polygon_to_array(polygon_path, crop_path, depth_value=0.5):
     )
 
 def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop_inputs, flood_metadata):
+    """Compute deterministic flood damages for each event.
+
+    Damage ratios scale linearly up to :data:`FULL_DAMAGE_DEPTH_FT` feet of
+    inundation, which represents total crop loss (6 ft by default).
+    """
+
     os.makedirs(output_dir, exist_ok=True)
     summaries, diagnostics, damage_rasters = {}, [], {}
 
@@ -123,7 +132,7 @@ def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop
                 continue
 
             value = props["Value"]
-            damage_ratio = np.clip(depth_arr / 6.0, 0, 1)
+            damage_ratio = np.clip(depth_arr / FULL_DAMAGE_DEPTH_FT, 0, 1)
             crop_damage = value * damage_ratio * mask
             avg_damage = crop_damage.sum()
             ead = avg_damage * (1 / return_period)
@@ -176,6 +185,12 @@ def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop
     return excel_path, summaries, diagnostics, damage_rasters
 
 def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft):
+    """Perform Monte Carlo EAD calculations.
+
+    The standard deviation of depth error is expressed relative to
+    :data:`FULL_DAMAGE_DEPTH_FT` feet (6 ft by default).
+    """
+
     results = {}
     for flood, df in summaries.items():
         meta = flood_metadata.get(flood, {})
@@ -185,7 +200,7 @@ def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, d
             sim = []
             for _ in range(samples):
                 value = np.random.normal(row["ValuePerAcre"], row["ValuePerAcre"] * value_uncertainty_pct / 100)
-                depth_ratio = np.random.normal(1.0, depth_uncertainty_ft / 6.0)
+                depth_ratio = np.random.normal(1.0, depth_uncertainty_ft / FULL_DAMAGE_DEPTH_FT)
                 sim_loss = value * depth_ratio * row["FloodedAcres"]
                 sim.append(sim_loss * (1 / return_period))
             rows.append({
