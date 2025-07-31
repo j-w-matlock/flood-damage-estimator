@@ -24,7 +24,7 @@ If paths are supplied, the application reads the files directly with `rasterio`,
 
 ## Polygon Uploads
 
-You may also provide a polygon layer (zipped Shapefile, GeoJSON, or KML) instead of a flood depth raster. Cells of the crop raster inside the polygon are assumed to receive **0.5&nbsp;ft** (6&nbsp;inches) of flooding. The original file names of uploaded rasters and polygons become the labels in the output Excel workbook.
+You may also provide a polygon layer (zipped Shapefile, GeoJSON, or KML) instead of a flood depth raster. Polygons are rasterized onto the crop raster grid, and cells inside the polygon are assumed to receive **0.5&nbsp;ft** (6&nbsp;inches) of flooding. The original file names of uploaded rasters and polygons become the labels in the output Excel workbook.
 
 
 ## Running Tests
