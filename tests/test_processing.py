@@ -9,6 +9,8 @@ from rasterio.transform import from_origin
 from shapely.geometry import box
 import geopandas as gpd
 import zipfile
+import fiona
+import pytest
 
 from utils.processing import (
     align_crop_to_depth,
@@ -114,6 +116,39 @@ def test_rasterize_polygon_zipped_shapefile(tmp_path):
                 z.write(f, arcname=f"poly.{ext}")
 
     arr = polygon_mask_to_depth_array(str(zip_path), str(crop_path))
+    assert arr.shape == crop.shape
+    assert arr.max() == 0.5
+    assert arr.sum() > 0
+
+
+def test_rasterize_polygon_geojson(tmp_path):
+    crop = np.zeros((10, 10), dtype=np.uint16)
+    crop_path = tmp_path / "crop.tif"
+    create_raster(crop_path, crop, "EPSG:4326", from_origin(0, 10, 1, 1))
+
+    gdf = gpd.GeoDataFrame({"geometry": [box(1, 1, 4, 4)]}, crs="EPSG:4326")
+    geojson_path = tmp_path / "poly.geojson"
+    gdf.to_file(geojson_path, driver="GeoJSON")
+
+    arr = polygon_mask_to_depth_array(str(geojson_path), str(crop_path))
+    assert arr.shape == crop.shape
+    assert arr.max() == 0.5
+    assert arr.sum() > 0
+
+
+def test_rasterize_polygon_kml(tmp_path):
+    if "KML" not in fiona.supported_drivers:
+        pytest.skip("KML driver not available")
+
+    crop = np.zeros((10, 10), dtype=np.uint16)
+    crop_path = tmp_path / "crop.tif"
+    create_raster(crop_path, crop, "EPSG:4326", from_origin(0, 10, 1, 1))
+
+    gdf = gpd.GeoDataFrame({"geometry": [box(3, 3, 6, 6)]}, crs="EPSG:4326")
+    kml_path = tmp_path / "poly.kml"
+    gdf.to_file(kml_path, driver="KML")
+
+    arr = polygon_mask_to_depth_array(str(kml_path), str(crop_path))
     assert arr.shape == crop.shape
     assert arr.max() == 0.5
     assert arr.sum() > 0

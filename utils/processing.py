@@ -4,7 +4,7 @@ import pandas as pd
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.warp import calculate_default_transform, reproject
-from shapely import intersects_xy, union_all
+from rasterio import features
 import geopandas as gpd
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
@@ -44,13 +44,11 @@ def align_crop_to_depth(crop_path, depth_path):
         return reprojected, profile
 
 def polygon_mask_to_depth_array(polygon_path, crop_path, depth_value=0.5):
-    """Create a depth array from polygon geometry without rasterization."""
+    """Rasterize polygons to the crop raster grid."""
 
     with rasterio.open(crop_path) as src:
-        rows, cols = np.indices((src.height, src.width))
-        xs, ys = rasterio.transform.xy(src.transform, rows, cols, offset="center")
-        xs = np.asarray(xs)
-        ys = np.asarray(ys)
+        height, width = src.height, src.width
+        transform = src.transform
         crs = src.crs
 
     if polygon_path.lower().endswith(".zip"):
@@ -61,9 +59,15 @@ def polygon_mask_to_depth_array(polygon_path, crop_path, depth_value=0.5):
     if gdf.crs != crs:
         gdf = gdf.to_crs(crs)
 
-    geometry = union_all(gdf.geometry.values)
-    mask = intersects_xy(geometry, xs, ys).reshape(rows.shape)
-    return np.where(mask, depth_value, 0.0)
+    shapes = [(geom, depth_value) for geom in gdf.geometry]
+    burned = features.rasterize(
+        shapes,
+        out_shape=(height, width),
+        transform=transform,
+        fill=0.0,
+        dtype="float32",
+    )
+    return burned
 
 def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop_inputs, flood_metadata):
     """Compute deterministic flood damages for each event.
