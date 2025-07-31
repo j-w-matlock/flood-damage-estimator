@@ -32,7 +32,6 @@ for key in [
         st.session_state[key] = [] if key == "temp_files" else None
 
 
-    """Remove temporary files tracked in the session."""
     files = st.session_state.get("temp_files") or []
     for path in files:
         if path and os.path.exists(path):
@@ -41,14 +40,12 @@ for key in [
 
 
 def cleanup_temp_dir():
-    """Remove the temporary directory used for outputs."""
     tmp = st.session_state.get("temp_dir")
     if tmp:
         tmp.cleanup()
     st.session_state["temp_dir"] = None
 
 def save_upload(uploaded, suffix):
-    """Save an uploaded file to a temporary path and track it."""
     path = tempfile.NamedTemporaryFile(delete=False, suffix=suffix).name
     with open(path, "wb") as out:
         out.write(uploaded.read())
