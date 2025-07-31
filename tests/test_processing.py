@@ -13,7 +13,7 @@ import zipfile
 from utils.processing import (
     align_crop_to_depth,
     process_flood_damage,
-    rasterize_polygon_to_array,
+    polygon_mask_to_depth_array,
 )
 
 
@@ -113,7 +113,7 @@ def test_rasterize_polygon_zipped_shapefile(tmp_path):
             if f.exists():
                 z.write(f, arcname=f"poly.{ext}")
 
-    arr = rasterize_polygon_to_array(str(zip_path), str(crop_path))
+    arr = polygon_mask_to_depth_array(str(zip_path), str(crop_path))
     assert arr.shape == crop.shape
     assert arr.max() == 0.5
     assert arr.sum() > 0

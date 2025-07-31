@@ -4,7 +4,7 @@ import pandas as pd
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.warp import calculate_default_transform, reproject
-from rasterio.features import rasterize
+from shapely import intersects_xy, union_all
 import geopandas as gpd
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
@@ -43,29 +43,15 @@ def align_crop_to_depth(crop_path, depth_path):
 
         return reprojected, profile
 
-def rasterize_polygon_to_array(polygon_path, crop_path, depth_value=0.5):
-    """Rasterize polygons to match the crop raster.
+def polygon_mask_to_depth_array(polygon_path, crop_path, depth_value=0.5):
+    """Create a depth array from polygon geometry without rasterization."""
 
-    Parameters
-    ----------
-    polygon_path : str
-        Path to a vector file (Shapefile zip, GeoJSON, or KML).
-    crop_path : str
-        Reference crop raster used for shape/transform.
-    depth_value : float, optional
-        Value assigned to polygon cells, by default 0.5 (6 inches).
-
-    Returns
-    -------
-    numpy.ndarray
-        Array in the crop raster's shape with polygons burned in.
-    """
-
-    with rasterio.open(crop_path) as ref:
-        transform = ref.transform
-        crs = ref.crs
-        width = ref.width
-        height = ref.height
+    with rasterio.open(crop_path) as src:
+        rows, cols = np.indices((src.height, src.width))
+        xs, ys = rasterio.transform.xy(src.transform, rows, cols, offset="center")
+        xs = np.asarray(xs)
+        ys = np.asarray(ys)
+        crs = src.crs
 
     if polygon_path.lower().endswith(".zip"):
         gdf = gpd.read_file(f"zip://{polygon_path}")
@@ -75,17 +61,9 @@ def rasterize_polygon_to_array(polygon_path, crop_path, depth_value=0.5):
     if gdf.crs != crs:
         gdf = gdf.to_crs(crs)
 
-    shapes = [(geom, depth_value) for geom in gdf.geometry if geom is not None]
-    if not shapes:
-        return np.zeros((height, width), dtype=float)
-
-    return rasterize(
-        shapes=shapes,
-        out_shape=(height, width),
-        fill=0,
-        transform=transform,
-        dtype=float,
-    )
+    geometry = union_all(gdf.geometry.values)
+    mask = intersects_xy(geometry, xs, ys).reshape(rows.shape)
+    return np.where(mask, depth_value, 0.0)
 
 def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop_inputs, flood_metadata):
     """Compute deterministic flood damages for each event.

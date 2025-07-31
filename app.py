@@ -6,7 +6,7 @@ import rasterio
 from utils.processing import (
     process_flood_damage,
     run_monte_carlo,
-    rasterize_polygon_to_array,
+    polygon_mask_to_depth_array,
 )
 import matplotlib.pyplot as plt
 import numpy as np
@@ -46,6 +46,14 @@ def cleanup_temp_dir():
     if tmp:
         tmp.cleanup()
     st.session_state["temp_dir"] = None
+
+def save_upload(uploaded, suffix):
+    """Save an uploaded file to a temporary path and track it."""
+    path = tempfile.NamedTemporaryFile(delete=False, suffix=suffix).name
+    with open(path, "wb") as out:
+        out.write(uploaded.read())
+    st.session_state.temp_files.append(path)
+    return path
 
 # Reset
 if st.sidebar.button("🔁 Reset App"):
@@ -94,11 +102,8 @@ crop_inputs, label_to_filename, label_to_metadata = {}, {}, {}
 
 # Process cropland raster
 if crop_file:
-    crop_path = tempfile.NamedTemporaryFile(delete=False, suffix=".tif").name
-    with open(crop_path, "wb") as f:
-        f.write(crop_file.read())
+    crop_path = save_upload(crop_file, ".tif")
     st.session_state.crop_path = crop_path
-    st.session_state.temp_files.append(crop_path)
 
     with rasterio.open(crop_path) as src:
         arr = src.read(1)
@@ -128,12 +133,9 @@ if depth_files or polygon_file:
 
     if depth_files:
         for i, f in enumerate(depth_files):
-            path = tempfile.NamedTemporaryFile(delete=False, suffix=".tif").name
-            with open(path, "wb") as out:
-                out.write(f.read())
+            path = save_upload(f, ".tif")
             label = os.path.splitext(os.path.basename(f.name))[0]
             depth_inputs.append((label, path))
-            st.session_state.temp_files.append(path)
             rp = st.number_input(
                 f"Return Period: {f.name}", min_value=1, value=100,
                 key=f"rp_{i}",
@@ -149,10 +151,7 @@ if depth_files or polygon_file:
 
     if polygon_file and crop_file:
         poly_ext = os.path.splitext(polygon_file.name)[1]
-        poly_path = tempfile.NamedTemporaryFile(delete=False, suffix=poly_ext).name
-        with open(poly_path, "wb") as out:
-            out.write(polygon_file.read())
-        st.session_state.temp_files.append(poly_path)
+        poly_path = save_upload(polygon_file, poly_ext)
 
         rp = st.number_input(
             f"Return Period: {polygon_file.name}", min_value=1, value=100,
@@ -165,7 +164,7 @@ if depth_files or polygon_file:
             help="Month of flood to compare against crop growing season"
         )
 
-        depth_arr = rasterize_polygon_to_array(poly_path, st.session_state.crop_path)
+        depth_arr = polygon_mask_to_depth_array(poly_path, st.session_state.crop_path)
         label = os.path.splitext(os.path.basename(polygon_file.name))[0]
         depth_inputs.append((label, depth_arr))
         label_to_filename[label] = polygon_file.name
