@@ -42,3 +42,14 @@ pytest
 ## Damage Assumption
 
 Flood losses are scaled relative to a depth of **6&nbsp;ft** of water. Any pixel with 6&nbsp;feet or more of inundation is treated as a total crop loss.
+
+## ArcGIS Pro Toolbox
+
+A Python toolbox named `flood_damage_toolbox.pyt` is provided for running the model within ArcGIS Pro.
+
+1. In ArcGIS Pro choose **Insert** → **Toolbox** and browse to `flood_damage_toolbox.pyt`.
+2. Open the **Flood Damage Estimator** tool.
+3. Provide a crop raster, one or more depth rasters, a CSV with crop codes, values and growing seasons, and an output folder.
+4. Optionally enable Monte Carlo simulation and adjust the uncertainty parameters.
+
+The tool writes an Excel summary in the chosen output folder, mirroring the results of the Streamlit application.
