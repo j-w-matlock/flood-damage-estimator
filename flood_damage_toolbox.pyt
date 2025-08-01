@@ -101,9 +101,9 @@ class FloodDamageTool(object):
 
     def execute(self, parameters, messages):
         crop_raster = parameters[0].valueAsText
-        flood_rasters = [p for p in parameters[1].values]
-        return_periods = [int(p) for p in parameters[2].values]
-        flood_months = [int(p) for p in parameters[3].values]
+        flood_rasters = parameters[1].valueAsText.split(";")
+        return_periods = [int(p) for p in parameters[2].valueAsText.split(";")]
+        flood_months = [int(p) for p in parameters[3].valueAsText.split(";")]
         crop_table = parameters[4].valueAsText
         output_folder = parameters[5].valueAsText
         run_mc = parameters[6].value or False
@@ -119,6 +119,15 @@ class FloodDamageTool(object):
                 "Value": float(row["Value"]),
                 "GrowingSeason": months,
             }
+
+        if not (
+            len(flood_rasters)
+            == len(return_periods)
+            == len(flood_months)
+        ):
+            raise ValueError(
+                "Mismatch among depth rasters, return periods and months"
+            )
 
         depth_inputs = []
         flood_metadata = {}
