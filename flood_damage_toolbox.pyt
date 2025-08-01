@@ -97,6 +97,7 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
             pd.DataFrame(diagnostics).to_excel(writer, sheet_name="Diagnostics", index=False)
 
         return excel_path, summaries, diagnostics, {}
+from utils.processing import process_flood_damage, run_monte_carlo
 
 
 class Toolbox(object):
