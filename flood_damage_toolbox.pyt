@@ -5,6 +5,98 @@ from pathlib import Path
 import arcpy
 import pandas as pd
 
+try:
+    import rasterio  # noqa: F401
+    from utils.processing import process_flood_damage, run_monte_carlo
+    RASTERIO_AVAILABLE = True
+except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
+    RASTERIO_AVAILABLE = False
+    from utils.processing import run_monte_carlo, FULL_DAMAGE_DEPTH_FT
+    def process_flood_damage(crop_raster, depth_inputs, output_dir, period_years, crop_inputs, flood_metadata):
+        """Fallback processing using arcpy when rasterio is unavailable."""
+        import os
+        import numpy as np
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        crop_arr = arcpy.RasterToNumPyArray(crop_raster)
+        desc = arcpy.Describe(crop_raster)
+        cell_x = desc.meanCellWidth
+        cell_y = desc.meanCellHeight
+        lower_left = desc.extent.lowerLeft
+
+        summaries, diagnostics = {}, []
+
+        for label, depth_path in depth_inputs:
+            meta = flood_metadata.get(label, {})
+            return_period = meta.get("return_period", 100)
+            flood_month = meta.get("flood_month", 6)
+
+            depth_arr = arcpy.RasterToNumPyArray(depth_path)
+            if depth_arr.shape != crop_arr.shape:
+                tmp = arcpy.env.scratchGDB + f"/resamp_{label}"
+                arcpy.management.ProjectRaster(depth_path, tmp, crop_raster, "BILINEAR", f"{cell_x} {cell_y}")
+                depth_arr = arcpy.RasterToNumPyArray(tmp)
+                arcpy.management.Delete(tmp)
+
+            damage_arr = np.zeros_like(depth_arr, dtype=float)
+            rows = []
+            damage_ratio = np.clip(depth_arr / FULL_DAMAGE_DEPTH_FT, 0, 1)
+
+            for code, props in crop_inputs.items():
+                if flood_month not in props["GrowingSeason"]:
+                    diagnostics.append({"Flood": label, "CropCode": code, "Issue": "Out of season"})
+                    continue
+
+                mask = crop_arr == code
+                if not np.any(mask):
+                    diagnostics.append({"Flood": label, "CropCode": code, "Issue": "Not present"})
+                    continue
+
+                value = props["Value"]
+                crop_damage = value * damage_ratio * mask
+                avg_damage = crop_damage.sum()
+                ead = avg_damage * (1 / return_period)
+                damage_arr = np.where(mask, damage_ratio, damage_arr)
+
+                rows.append({
+                    "CropCode": code,
+                    "FloodedAcres": int(mask.sum()),
+                    "ValuePerAcre": value,
+                    "DollarsLost": round(float(avg_damage), 2),
+                    "EAD": round(float(ead), 2),
+                    "ReturnPeriod": return_period,
+                    "FloodMonth": flood_month,
+                })
+
+            summaries[label] = pd.DataFrame(rows)
+            out_ras = arcpy.NumPyArrayToRaster(damage_arr, lower_left, cell_x, cell_y, -9999)
+            out_ras.save(os.path.join(output_dir, f"damage_{label}.tif"))
+
+        trapezoid_rows = []
+        if len(summaries) > 1:
+            combined = pd.concat([df.assign(Flood=l) for l, df in summaries.items()])
+            grouped = combined.groupby("CropCode")
+            for code, group in grouped:
+                sorted_group = group.sort_values("ReturnPeriod", ascending=False)
+                x = 1 / sorted_group["ReturnPeriod"].values
+                y = sorted_group["EAD"].values
+                trapezoidal_ead = np.trapz(y, x)
+                trapezoid_rows.append({
+                    "CropCode": code,
+                    "TrapezoidalEAD": round(float(trapezoidal_ead), 2),
+                    "FloodsUsed": len(group),
+                })
+
+        excel_path = os.path.join(output_dir, "ag_damage_summary.xlsx")
+        with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
+            for label, df in summaries.items():
+                df.to_excel(writer, sheet_name=label, index=False)
+            if trapezoid_rows:
+                pd.DataFrame(trapezoid_rows).to_excel(writer, sheet_name="Integrated_EAD", index=False)
+            pd.DataFrame(diagnostics).to_excel(writer, sheet_name="Diagnostics", index=False)
+
+        return excel_path, summaries, diagnostics, {}
 from utils.processing import process_flood_damage, run_monte_carlo
 
 

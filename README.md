@@ -54,3 +54,7 @@ A Python toolbox named `flood_damage_toolbox.pyt` is provided for running the mo
 5. Optionally enable Monte Carlo simulation and adjust the uncertainty parameters.
 
 The tool writes an Excel summary in the chosen output folder, mirroring the results of the Streamlit application.
+
+If the `rasterio` package is not available, the toolbox automatically falls back
+to using `arcpy` for all raster operations. This makes it compatible with a
+standard ArcGIS Pro Python installation.
