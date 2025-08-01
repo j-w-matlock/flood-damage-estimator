@@ -22,9 +22,13 @@ You may either upload `.tif` files directly in the sidebar or provide paths to e
 
 If paths are supplied, the application reads the files directly with `rasterio`, bypassing Streamlit's upload size limit.
 
-## Polygon Uploads
+## Uniform Depth Option
 
-You may also provide a polygon layer (zipped Shapefile, GeoJSON, or KML) instead of a flood depth raster. Polygons are rasterized onto the crop raster grid, and cells inside the polygon are assumed to receive **0.5&nbsp;ft** (6&nbsp;inches) of flooding. The original file names of uploaded rasters and polygons become the labels in the output Excel workbook.
+Instead of supplying a polygon to define flooded areas, you can enable the *Uniform Flood Depth* checkbox and enter a depth value in feet. The app will duplicate the crop raster and assign the specified depth to every pixel.
+
+## Manual Depth Painting
+
+If you prefer to sketch flooded areas directly, enable **Manual Depth Painting** in the sidebar. Choose a depth (in 0.5&nbsp;ft increments) and draw polygons on the interactive map. Each polygon is rasterized with its selected depth and treated like any other depth grid when calculating damages.
 
 
 ## Running Tests

@@ -6,29 +6,29 @@ from rasterio.enums import Resampling
 from rasterio.warp import calculate_default_transform, reproject
 from rasterio import features
 import geopandas as gpd
+from shapely.geometry import shape
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 
 # Depth in feet assumed to result in 100% crop damage
 FULL_DAMAGE_DEPTH_FT = 6.0
 
+
 def align_crop_to_depth(crop_path, depth_path):
     with rasterio.open(depth_path) as depth_src, rasterio.open(crop_path) as crop_src:
         dst_crs = depth_src.crs
         dst_transform, width, height = calculate_default_transform(
-            crop_src.crs,
-            dst_crs,
-            crop_src.width,
-            crop_src.height,
-            *crop_src.bounds
+            crop_src.crs, dst_crs, crop_src.width, crop_src.height, *crop_src.bounds
         )
         profile = crop_src.profile.copy()
-        profile.update({
-            'crs': dst_crs,
-            'transform': dst_transform,
-            'width': width,
-            'height': height
-        })
+        profile.update(
+            {
+                "crs": dst_crs,
+                "transform": dst_transform,
+                "width": width,
+                "height": height,
+            }
+        )
 
         reprojected = np.zeros((height, width), dtype=np.uint16)
         reproject(
@@ -38,10 +38,11 @@ def align_crop_to_depth(crop_path, depth_path):
             src_crs=crop_src.crs,
             dst_transform=dst_transform,
             dst_crs=dst_crs,
-            resampling=Resampling.nearest
+            resampling=Resampling.nearest,
         )
 
         return reprojected, profile
+
 
 def polygon_mask_to_depth_array(polygon_path, crop_path, depth_value=0.5):
     """Rasterize polygons to the crop raster grid."""
@@ -69,7 +70,48 @@ def polygon_mask_to_depth_array(polygon_path, crop_path, depth_value=0.5):
     )
     return burned
 
-def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop_inputs, flood_metadata):
+
+def constant_depth_array(crop_path, depth_value=0.5):
+    """Create a depth raster matching the crop raster filled with a constant value."""
+
+    with rasterio.open(crop_path) as src:
+        arr_shape = src.read(1).shape
+
+    return np.full(arr_shape, depth_value, dtype="float32")
+
+
+def drawn_features_to_depth_array(features_list, crop_path, default_value=0.0):
+    """Rasterize drawn polygon features with per-feature depth values."""
+
+    if not features_list:
+        with rasterio.open(crop_path) as src:
+            arr_shape = src.read(1).shape
+        return np.full(arr_shape, default_value, dtype="float32")
+
+    with rasterio.open(crop_path) as src:
+        height, width = src.height, src.width
+        transform = src.transform
+        crs = src.crs
+
+    geoms = []
+    for feat in features_list:
+        geom = shape(feat["geometry"])
+        depth = float(feat.get("properties", {}).get("depth", default_value))
+        geoms.append((geom, depth))
+
+    burned = features.rasterize(
+        geoms,
+        out_shape=(height, width),
+        transform=transform,
+        fill=default_value,
+        dtype="float32",
+    )
+    return burned
+
+
+def process_flood_damage(
+    crop_path, depth_inputs, output_dir, period_years, crop_inputs, flood_metadata
+):
     """Compute deterministic flood damages for each event.
 
     Damage ratios scale linearly up to :data:`FULL_DAMAGE_DEPTH_FT` feet of
@@ -98,7 +140,11 @@ def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop
                 depth_path = data
                 aligned_crop, crop_profile = align_crop_to_depth(crop_path, depth_path)
                 with rasterio.open(depth_path) as depth_src:
-                    depth_arr = depth_src.read(1, out_shape=(aligned_crop.shape), resampling=Resampling.bilinear)
+                    depth_arr = depth_src.read(
+                        1,
+                        out_shape=(aligned_crop.shape),
+                        resampling=Resampling.bilinear,
+                    )
         else:
             depth_path = item
             label = os.path.splitext(os.path.basename(depth_path))[0]
@@ -109,7 +155,9 @@ def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop
             aligned_crop, crop_profile = align_crop_to_depth(crop_path, depth_path)
 
             with rasterio.open(depth_path) as depth_src:
-                depth_arr = depth_src.read(1, out_shape=(aligned_crop.shape), resampling=Resampling.bilinear)
+                depth_arr = depth_src.read(
+                    1, out_shape=(aligned_crop.shape), resampling=Resampling.bilinear
+                )
 
         damage_arr = np.zeros_like(aligned_crop, dtype=float)
         rows = []
@@ -118,12 +166,16 @@ def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop
 
         for code, props in crop_inputs.items():
             if flood_month not in props["GrowingSeason"]:
-                diagnostics.append({"Flood": label, "CropCode": code, "Issue": "Out of season"})
+                diagnostics.append(
+                    {"Flood": label, "CropCode": code, "Issue": "Out of season"}
+                )
                 continue
 
             mask = aligned_crop == code
             if not np.any(mask):
-                diagnostics.append({"Flood": label, "CropCode": code, "Issue": "Not present"})
+                diagnostics.append(
+                    {"Flood": label, "CropCode": code, "Issue": "Not present"}
+                )
                 continue
 
             value = props["Value"]
@@ -132,29 +184,33 @@ def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop
             ead = avg_damage * (1 / return_period)
             damage_arr = np.where(mask, damage_ratio, damage_arr)
 
-            rows.append({
-                "CropCode": code,
-                "FloodedAcres": int(mask.sum()),
-                "ValuePerAcre": value,
-                "DollarsLost": round(avg_damage, 2),
-                "EAD": round(ead, 2),
-                "ReturnPeriod": return_period,
-                "FloodMonth": flood_month
-            })
+            rows.append(
+                {
+                    "CropCode": code,
+                    "FloodedAcres": int(mask.sum()),
+                    "ValuePerAcre": value,
+                    "DollarsLost": round(avg_damage, 2),
+                    "EAD": round(ead, 2),
+                    "ReturnPeriod": return_period,
+                    "FloodMonth": flood_month,
+                }
+            )
 
         df = pd.DataFrame(rows)
         summaries[label] = df
         damage_rasters[label] = damage_arr
 
-        with rasterio.open(os.path.join(output_dir, f"damage_{label}.tif"), "w", **crop_profile) as dst:
+        with rasterio.open(
+            os.path.join(output_dir, f"damage_{label}.tif"), "w", **crop_profile
+        ) as dst:
             dst.write(damage_arr, 1)
 
     # Optional trapezoidal integration
     trapezoid_rows = []
     if len(summaries) > 1:
-        combined = pd.concat([
-            df.assign(Flood=label) for label, df in summaries.items()
-        ])
+        combined = pd.concat(
+            [df.assign(Flood=label) for label, df in summaries.items()]
+        )
         grouped = combined.groupby("CropCode")
 
         for code, group in grouped:
@@ -162,23 +218,32 @@ def process_flood_damage(crop_path, depth_inputs, output_dir, period_years, crop
             x = 1 / sorted_group["ReturnPeriod"].values
             y = sorted_group["EAD"].values
             trapezoidal_ead = np.trapz(y, x)
-            trapezoid_rows.append({
-                "CropCode": code,
-                "TrapezoidalEAD": round(trapezoidal_ead, 2),
-                "FloodsUsed": len(group)
-            })
+            trapezoid_rows.append(
+                {
+                    "CropCode": code,
+                    "TrapezoidalEAD": round(trapezoidal_ead, 2),
+                    "FloodsUsed": len(group),
+                }
+            )
 
     excel_path = os.path.join(output_dir, "ag_damage_summary.xlsx")
     with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
         for label, df in summaries.items():
             df.to_excel(writer, sheet_name=label, index=False)
         if trapezoid_rows:
-            pd.DataFrame(trapezoid_rows).to_excel(writer, sheet_name="Integrated_EAD", index=False)
-        pd.DataFrame(diagnostics).to_excel(writer, sheet_name="Diagnostics", index=False)
+            pd.DataFrame(trapezoid_rows).to_excel(
+                writer, sheet_name="Integrated_EAD", index=False
+            )
+        pd.DataFrame(diagnostics).to_excel(
+            writer, sheet_name="Diagnostics", index=False
+        )
 
     return excel_path, summaries, diagnostics, damage_rasters
 
-def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft):
+
+def run_monte_carlo(
+    summaries, flood_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft
+):
     """Perform Monte Carlo EAD calculations.
 
     The standard deviation of depth error is expressed relative to
@@ -193,15 +258,24 @@ def run_monte_carlo(summaries, flood_metadata, samples, value_uncertainty_pct, d
         for _, row in df.iterrows():
             value_sd = row["ValuePerAcre"] * value_uncertainty_pct / 100
             value_samples = np.random.normal(row["ValuePerAcre"], value_sd, samples)
-            depth_samples = np.random.normal(1.0, depth_uncertainty_ft / FULL_DAMAGE_DEPTH_FT, samples)
-            losses = value_samples * depth_samples * row["FloodedAcres"] * (1 / return_period)
+            depth_samples = np.random.normal(
+                1.0, depth_uncertainty_ft / FULL_DAMAGE_DEPTH_FT, samples
+            )
+            losses = (
+                value_samples
+                * depth_samples
+                * row["FloodedAcres"]
+                * (1 / return_period)
+            )
 
-            rows.append({
-                "CropCode": row["CropCode"],
-                "EAD_MC_Mean": round(float(np.mean(losses)), 2),
-                "EAD_MC_5th": round(float(np.percentile(losses, 5)), 2),
-                "EAD_MC_95th": round(float(np.percentile(losses, 95)), 2),
-                "Original_EAD": row["EAD"]
-            })
+            rows.append(
+                {
+                    "CropCode": row["CropCode"],
+                    "EAD_MC_Mean": round(float(np.mean(losses)), 2),
+                    "EAD_MC_5th": round(float(np.percentile(losses, 5)), 2),
+                    "EAD_MC_95th": round(float(np.percentile(losses, 95)), 2),
+                    "Original_EAD": row["EAD"],
+                }
+            )
         results[flood] = pd.DataFrame(rows)
     return results
