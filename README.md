@@ -50,6 +50,7 @@ A Python toolbox named `flood_damage_toolbox.pyt` is provided for running the mo
 1. In ArcGIS Pro choose **Insert** → **Toolbox** and browse to `flood_damage_toolbox.pyt`.
 2. Open the **Flood Damage Estimator** tool.
 3. Provide a crop raster, one or more depth rasters, a CSV with crop codes, values and growing seasons, and an output folder.
-4. Optionally enable Monte Carlo simulation and adjust the uncertainty parameters.
+4. Enter a return period and flood month for **each** depth raster (the lists must match in length).
+5. Optionally enable Monte Carlo simulation and adjust the uncertainty parameters.
 
 The tool writes an Excel summary in the chosen output folder, mirroring the results of the Streamlit application.
