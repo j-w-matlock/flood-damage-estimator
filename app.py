@@ -131,7 +131,7 @@ if crop_file:
     with rasterio.open(crop_path) as src:
         arr = src.read(1)
     counts = Counter(arr.flatten())
-    codes = [c for c, _ in counts.most_common(10) if c != 0]
+    codes = [c for c, _ in counts.most_common(50) if c != 0]
 
     st.markdown("### 🌱 Crop Values and Growing Seasons")
     for code in codes:
@@ -397,3 +397,4 @@ elif mode == "Monte Carlo Simulation":
 
                 except Exception as e:
                     st.error(f"⚠️ Monte Carlo error: {e}")
+
