@@ -216,6 +216,23 @@ def test_pixel_to_acre_conversion(tmp_path):
     assert flooded_acres == pytest.approx(expected, rel=1e-3)
 
 
+def test_process_flood_damage_excludes_zero_code(tmp_path):
+    crop = np.array([[0, 1], [0, 1]], dtype=np.uint16)
+    crop_path = tmp_path / "crop.tif"
+    create_raster(crop_path, crop, "EPSG:4326", from_origin(0, 2, 1, 1))
+
+    depth_arr = np.full((2, 2), 6.0, dtype=float)
+    flood_metadata = {"flood": {"return_period": 10, "flood_month": 6}}
+
+    out_dir = tmp_path / "out"
+    _, summaries, _, rasters = process_flood_damage(
+        str(crop_path), [("flood", depth_arr)], str(out_dir), 100, None, flood_metadata
+    )
+
+    df = summaries["flood"]
+    assert set(df["CropCode"]) == {1}
+    assert np.all(rasters["flood"][crop == 0] == 0)
+
 def test_rasterize_polygon_zipped_shapefile(tmp_path):
     crop = np.zeros((10, 10), dtype=np.uint16)
     crop_path = tmp_path / "crop.tif"
