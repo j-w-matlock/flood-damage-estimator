@@ -2,6 +2,10 @@
 
 This Streamlit app estimates agricultural flood damages from cropland and flood depth rasters.
 
+The interface now reports **all** crop codes present in the uploaded raster and
+displays bar chart visualizations of damages for quick comparison between crop
+types.
+
 ## Usage
 
 1. Install requirements:

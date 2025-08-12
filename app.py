@@ -131,7 +131,7 @@ if crop_file:
     with rasterio.open(crop_path) as src:
         arr = src.read(1)
     counts = Counter(arr.flatten())
-    codes = [c for c, _ in counts.most_common(50) if c != 0]
+    codes = [c for c, _ in counts.most_common() if c != 0]
 
     st.markdown("### 🌱 Crop Values and Growing Seasons")
     for code in codes:
@@ -311,6 +311,11 @@ if mode == "Direct Damages":
                 """
                 )
             st.dataframe(df)
+            chart_data = (
+                df.sort_values("DollarsLost", ascending=False)
+                .set_index("CropCode")["DollarsLost"]
+            )
+            st.bar_chart(chart_data)
 
         if st.session_state.diagnostics:
             st.subheader("🛠️ Diagnostics")
@@ -378,6 +383,11 @@ elif mode == "Monte Carlo Simulation":
                             """
                             )
                         st.dataframe(df)
+                        chart_data = (
+                            df.sort_values("EAD_MC_Mean", ascending=False)
+                            .set_index("CropCode")["EAD_MC_Mean"]
+                        )
+                        st.bar_chart(chart_data)
 
                     with pd.ExcelWriter(
                         result_path, mode="a", engine="openpyxl"
