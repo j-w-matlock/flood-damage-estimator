@@ -4,6 +4,7 @@ from pathlib import Path
 
 import arcpy
 import pandas as pd
+from utils.crop_definitions import CROP_DEFINITIONS
 
 try:
     import rasterio  # noqa: F401
@@ -16,10 +17,29 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
     FULL_DAMAGE_DEPTH_FT = 6.0
 
     def process_flood_damage(
-        crop_raster, depth_inputs, output_dir, period_years, crop_inputs, flood_metadata
+        crop_raster,
+        depth_inputs,
+        output_dir,
+        period_years,
+        crop_inputs=None,
+        flood_metadata=None,
     ):
         """Fallback processing using arcpy when rasterio is unavailable."""
         import os
+
+        flood_metadata = flood_metadata or {}
+        if crop_inputs is None:
+            crop_inputs = {
+                code: {
+                    "Name": name,
+                    "Value": value,
+                    "GrowingSeason": list(range(1, 13)),
+                }
+                for code, (name, value) in CROP_DEFINITIONS.items()
+            }
+        else:
+            for code, props in crop_inputs.items():
+                props.setdefault("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
 
         os.makedirs(output_dir, exist_ok=True)
 
@@ -51,6 +71,7 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
 
             for code, props in crop_inputs.items():
                 value = props["Value"]
+                name = props.get("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
                 mask = crop_arr == code
                 out_of_season = flood_month not in props["GrowingSeason"]
                 not_present = not np.any(mask)
@@ -63,6 +84,7 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
                     rows.append(
                         {
                             "CropCode": code,
+                            "CropName": name,
                             "FloodedAcres": 0,
                             "ValuePerAcre": value,
                             "DollarsLost": 0.0,
@@ -81,6 +103,7 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
                 rows.append(
                     {
                         "CropCode": code,
+                        "CropName": name,
                         "FloodedAcres": int(mask.sum()),
                         "ValuePerAcre": value,
                         "DollarsLost": round(float(avg_damage), 2),
