@@ -15,6 +15,9 @@ from .crop_definitions import CROP_DEFINITIONS
 # Depth in feet assumed to result in 100% crop damage
 FULL_DAMAGE_DEPTH_FT = 6.0
 
+# Conversion factor from square meters to acres
+SQ_METERS_TO_ACRES = 0.000247105
+
 
 def align_crop_to_depth(crop_path, depth_path):
     with rasterio.open(depth_path) as depth_src, rasterio.open(crop_path) as crop_src:
@@ -126,18 +129,6 @@ def process_flood_damage(
     """
 
     flood_metadata = flood_metadata or {}
-    if crop_inputs is None:
-        crop_inputs = {
-            code: {
-                "Name": name,
-                "Value": value,
-                "GrowingSeason": list(range(1, 13)),
-            }
-            for code, (name, value) in CROP_DEFINITIONS.items()
-        }
-    else:
-        for code, props in crop_inputs.items():
-            props.setdefault("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
 
     os.makedirs(output_dir, exist_ok=True)
     summaries, diagnostics, damage_rasters = {}, [], {}
@@ -145,6 +136,28 @@ def process_flood_damage(
     with rasterio.open(crop_path) as base_crop_src:
         base_crop_arr = base_crop_src.read(1)
         base_crop_profile = base_crop_src.profile.copy()
+        crop_codes_present = np.unique(base_crop_arr)
+
+    if crop_inputs is None:
+        crop_inputs = {
+            code: {
+                "Name": CROP_DEFINITIONS.get(code, ("", 0))[0],
+                "Value": CROP_DEFINITIONS.get(code, ("", 0))[1],
+                "GrowingSeason": list(range(1, 13)),
+            }
+            for code in crop_codes_present
+        }
+    else:
+        for code, props in crop_inputs.items():
+            props.setdefault("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
+        for code in crop_codes_present:
+            if code not in crop_inputs:
+                name, value = CROP_DEFINITIONS.get(code, ("", 0))
+                crop_inputs[code] = {
+                    "Name": name,
+                    "Value": value,
+                    "GrowingSeason": list(range(1, 13)),
+                }
 
     for item in depth_inputs:
         if isinstance(item, tuple):
@@ -185,6 +198,11 @@ def process_flood_damage(
 
         damage_ratio = np.clip(depth_arr / FULL_DAMAGE_DEPTH_FT, 0, 1)
 
+        pixel_area_acres = (
+            abs(crop_profile["transform"][0] * crop_profile["transform"][4])
+            * SQ_METERS_TO_ACRES
+        )
+
         for code, props in crop_inputs.items():
             value = props["Value"]
             name = props.get("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
@@ -202,7 +220,7 @@ def process_flood_damage(
                     {
                         "CropCode": code,
                         "CropName": name,
-                        "FloodedAcres": 0,
+                        "FloodedAcres": 0.0,
                         "ValuePerAcre": value,
                         "DollarsLost": 0.0,
                         "EAD": 0.0,
@@ -212,7 +230,8 @@ def process_flood_damage(
                 )
                 continue
 
-            crop_damage = value * damage_ratio * mask
+            flooded_acres = mask.sum() * pixel_area_acres
+            crop_damage = value * damage_ratio * mask * pixel_area_acres
             avg_damage = crop_damage.sum()
             ead = avg_damage * (1 / return_period)
             damage_arr = np.where(mask, damage_ratio, damage_arr)
@@ -221,7 +240,7 @@ def process_flood_damage(
                 {
                     "CropCode": code,
                     "CropName": name,
-                    "FloodedAcres": int(mask.sum()),
+                    "FloodedAcres": flooded_acres,
                     "ValuePerAcre": value,
                     "DollarsLost": round(avg_damage, 2),
                     "EAD": round(ead, 2),

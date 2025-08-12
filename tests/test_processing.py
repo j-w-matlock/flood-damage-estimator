@@ -165,6 +165,57 @@ def test_process_flood_damage_includes_names(tmp_path):
     assert name == CROP_DEFINITIONS[1][0]
 
 
+def test_process_flood_damage_includes_unlisted_crops(tmp_path):
+    crop = np.array([[1, 2]], dtype=np.uint16)
+    crop_path = tmp_path / "crop.tif"
+    create_raster(crop_path, crop, "EPSG:3857", from_origin(0, 1, 1, 1))
+
+    depth_arr = np.full((1, 2), 6.0, dtype=float)
+    crop_inputs = {1: {"Value": 10, "GrowingSeason": [6]}}  # crop 2 omitted
+    flood_metadata = {"floodA": {"return_period": 10, "flood_month": 6}}
+
+    out_dir = tmp_path / "out"
+    _, summaries, _, _ = process_flood_damage(
+        str(crop_path),
+        [("floodA", depth_arr)],
+        str(out_dir),
+        100,
+        crop_inputs,
+        flood_metadata,
+    )
+
+    df = summaries["floodA"]
+    assert set(df["CropCode"]) == {1, 2}
+
+
+def test_pixel_to_acre_conversion(tmp_path):
+    crop = np.array([[1]], dtype=np.uint16)
+    pixel_size = 30  # meters
+    crop_path = tmp_path / "crop.tif"
+    create_raster(
+        crop_path, crop, "EPSG:3857", from_origin(0, pixel_size, pixel_size, pixel_size)
+    )
+
+    depth_arr = np.full((1, 1), 6.0, dtype=float)
+    crop_inputs = {1: {"Value": 10, "GrowingSeason": [6]}}
+    flood_metadata = {"floodA": {"return_period": 10, "flood_month": 6}}
+
+    out_dir = tmp_path / "out"
+    _, summaries, _, _ = process_flood_damage(
+        str(crop_path),
+        [("floodA", depth_arr)],
+        str(out_dir),
+        100,
+        crop_inputs,
+        flood_metadata,
+    )
+
+    df = summaries["floodA"]
+    expected = (pixel_size * pixel_size) / 4046.8564224
+    flooded_acres = df[df["CropCode"] == 1]["FloodedAcres"].iloc[0]
+    assert flooded_acres == pytest.approx(expected, rel=1e-3)
+
+
 def test_rasterize_polygon_zipped_shapefile(tmp_path):
     crop = np.zeros((10, 10), dtype=np.uint16)
     crop_path = tmp_path / "crop.tif"
