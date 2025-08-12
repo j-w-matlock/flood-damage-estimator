@@ -83,7 +83,8 @@ def test_process_flood_damage_generates_outputs(tmp_path):
     df = summaries["floodA"]
     assert len(df) == 2
     assert diagnostics == []
-    assert rasters["floodA"].shape == crop.shape
+    assert rasters["floodA"]["ratio"].shape == crop.shape
+    assert set(np.unique(rasters["floodA"]["crop"])) == {1, 2}
 
 
 def test_process_flood_damage_with_labeled_path(tmp_path):
@@ -231,7 +232,7 @@ def test_process_flood_damage_excludes_zero_code(tmp_path):
 
     df = summaries["flood"]
     assert set(df["CropCode"]) == {1}
-    assert np.all(rasters["flood"][crop == 0] == 0)
+    assert np.all(rasters["flood"]["ratio"][crop == 0] == 0)
 
 def test_rasterize_polygon_zipped_shapefile(tmp_path):
     crop = np.zeros((10, 10), dtype=np.uint16)

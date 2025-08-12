@@ -13,6 +13,8 @@ from utils.processing import (
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import Counter
+from openpyxl import load_workbook
+from openpyxl.drawing.image import Image as XLImage
 
 st.set_page_config(layout="wide")
 st.title("🌾 Agricultural Flood Damage Estimator")
@@ -298,6 +300,8 @@ if mode == "Direct Damages":
         st.markdown("---")
         st.header("📈 Results & Visualizations")
 
+        image_paths = {}
+
         for label, df in st.session_state.summaries.items():
             st.subheader(f"📋 Summary for {label}")
             with st.expander("ℹ️ Column Definitions"):
@@ -315,19 +319,49 @@ if mode == "Direct Damages":
                 df.sort_values("DollarsLost", ascending=False)
                 .set_index("CropCode")["DollarsLost"]
             )
-            st.bar_chart(chart_data)
+            fig_bar, ax_bar = plt.subplots()
+            ax_bar.bar(chart_data.index.astype(str), chart_data.values)
+            ax_bar.set_xlabel("Crop Code")
+            ax_bar.set_ylabel("Dollars Lost")
+            st.pyplot(fig_bar)
+            bar_path = os.path.join(
+                st.session_state.temp_dir.name, f"bar_{label}.png"
+            )
+            fig_bar.savefig(bar_path)
+            plt.close(fig_bar)
+            image_paths.setdefault(label, {})["bar"] = bar_path
 
         if st.session_state.diagnostics:
             st.subheader("🛠️ Diagnostics")
             st.dataframe(pd.DataFrame(st.session_state.diagnostics))
 
-        for label, arr in st.session_state.damage_rasters.items():
+        for label, arrs in st.session_state.damage_rasters.items():
             st.subheader(f"🗺️ Damage Raster – {label}")
+            crop_arr = arrs.get("crop") if isinstance(arrs, dict) else arrs
+            masked = np.ma.masked_where(crop_arr == 0, crop_arr)
             fig, ax = plt.subplots()
-            cax = ax.imshow(arr, cmap="YlOrRd")
-            fig.colorbar(cax, ax=ax, label="Damage Ratio")
-            ax.set_title(f"Damage Raster: {label}")
+            cax = ax.imshow(masked, cmap="tab20")
+            fig.colorbar(cax, ax=ax, label="Crop Code")
+            ax.set_title(f"Damaged Crops: {label}")
             st.pyplot(fig)
+            raster_path = os.path.join(
+                st.session_state.temp_dir.name, f"raster_{label}.png"
+            )
+            fig.savefig(raster_path)
+            plt.close(fig)
+            image_paths.setdefault(label, {})["raster"] = raster_path
+
+        # Insert images into Excel
+        if image_paths:
+            wb = load_workbook(st.session_state.result_path)
+            for label, imgs in image_paths.items():
+                if label in wb.sheetnames:
+                    ws = wb[label]
+                    if "bar" in imgs:
+                        ws.add_image(XLImage(imgs["bar"]), "H2")
+                    if "raster" in imgs:
+                        ws.add_image(XLImage(imgs["raster"]), "H20")
+            wb.save(st.session_state.result_path)
 
         with open(st.session_state.result_path, "rb") as file:
             st.download_button(
