@@ -136,7 +136,7 @@ def process_flood_damage(
     with rasterio.open(crop_path) as base_crop_src:
         base_crop_arr = base_crop_src.read(1)
         base_crop_profile = base_crop_src.profile.copy()
-        crop_codes_present = np.unique(base_crop_arr)
+        crop_codes_present = [c for c in np.unique(base_crop_arr) if c != 0]
 
     if crop_inputs is None:
         crop_inputs = {
@@ -148,6 +148,7 @@ def process_flood_damage(
             for code in crop_codes_present
         }
     else:
+        crop_inputs = {k: v for k, v in crop_inputs.items() if k != 0}
         for code, props in crop_inputs.items():
             props.setdefault("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
         for code in crop_codes_present:
