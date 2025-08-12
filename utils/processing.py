@@ -188,6 +188,7 @@ def process_flood_damage(
         for code, props in crop_inputs.items():
             value = props["Value"]
             name = props.get("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
+
             mask = aligned_crop == code
             out_of_season = flood_month not in props["GrowingSeason"]
             not_present = not np.any(mask)
