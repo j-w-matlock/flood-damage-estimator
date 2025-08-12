@@ -252,7 +252,12 @@ def process_flood_damage(
 
         df = pd.DataFrame(rows)
         summaries[label] = df
-        damage_rasters[label] = damage_arr
+
+        damage_crop_arr = np.where(damage_arr > 0, aligned_crop, 0)
+        damage_rasters[label] = {
+            "ratio": damage_arr,
+            "crop": damage_crop_arr,
+        }
 
         with rasterio.open(
             os.path.join(output_dir, f"damage_{label}.tif"), "w", **crop_profile
