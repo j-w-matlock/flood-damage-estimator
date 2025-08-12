@@ -10,6 +10,8 @@ from shapely.geometry import shape
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 
+from .crop_definitions import CROP_DEFINITIONS
+
 # Depth in feet assumed to result in 100% crop damage
 FULL_DAMAGE_DEPTH_FT = 6.0
 
@@ -110,13 +112,32 @@ def drawn_features_to_depth_array(features_list, crop_path, default_value=0.0):
 
 
 def process_flood_damage(
-    crop_path, depth_inputs, output_dir, period_years, crop_inputs, flood_metadata
+    crop_path,
+    depth_inputs,
+    output_dir,
+    period_years,
+    crop_inputs=None,
+    flood_metadata=None,
 ):
     """Compute deterministic flood damages for each event.
 
     Damage ratios scale linearly up to :data:`FULL_DAMAGE_DEPTH_FT` feet of
     inundation, which represents total crop loss (6 ft by default).
     """
+
+    flood_metadata = flood_metadata or {}
+    if crop_inputs is None:
+        crop_inputs = {
+            code: {
+                "Name": name,
+                "Value": value,
+                "GrowingSeason": list(range(1, 13)),
+            }
+            for code, (name, value) in CROP_DEFINITIONS.items()
+        }
+    else:
+        for code, props in crop_inputs.items():
+            props.setdefault("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
 
     os.makedirs(output_dir, exist_ok=True)
     summaries, diagnostics, damage_rasters = {}, [], {}
@@ -165,20 +186,31 @@ def process_flood_damage(
         damage_ratio = np.clip(depth_arr / FULL_DAMAGE_DEPTH_FT, 0, 1)
 
         for code, props in crop_inputs.items():
-            if flood_month not in props["GrowingSeason"]:
-                diagnostics.append(
-                    {"Flood": label, "CropCode": code, "Issue": "Out of season"}
-                )
-                continue
-
-            mask = aligned_crop == code
-            if not np.any(mask):
-                diagnostics.append(
-                    {"Flood": label, "CropCode": code, "Issue": "Not present"}
-                )
-                continue
-
             value = props["Value"]
+            name = props.get("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
+            mask = aligned_crop == code
+            out_of_season = flood_month not in props["GrowingSeason"]
+            not_present = not np.any(mask)
+
+            if out_of_season or not_present:
+                issue = "Out of season" if out_of_season else "Not present"
+                diagnostics.append(
+                    {"Flood": label, "CropCode": code, "Issue": issue}
+                )
+                rows.append(
+                    {
+                        "CropCode": code,
+                        "CropName": name,
+                        "FloodedAcres": 0,
+                        "ValuePerAcre": value,
+                        "DollarsLost": 0.0,
+                        "EAD": 0.0,
+                        "ReturnPeriod": return_period,
+                        "FloodMonth": flood_month,
+                    }
+                )
+                continue
+
             crop_damage = value * damage_ratio * mask
             avg_damage = crop_damage.sum()
             ead = avg_damage * (1 / return_period)
@@ -187,6 +219,7 @@ def process_flood_damage(
             rows.append(
                 {
                     "CropCode": code,
+                    "CropName": name,
                     "FloodedAcres": int(mask.sum()),
                     "ValuePerAcre": value,
                     "DollarsLost": round(avg_damage, 2),

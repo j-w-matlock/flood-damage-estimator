@@ -4,6 +4,7 @@ from pathlib import Path
 
 import arcpy
 import pandas as pd
+from utils.crop_definitions import CROP_DEFINITIONS
 
 try:
     import rasterio  # noqa: F401
@@ -16,10 +17,29 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
     FULL_DAMAGE_DEPTH_FT = 6.0
 
     def process_flood_damage(
-        crop_raster, depth_inputs, output_dir, period_years, crop_inputs, flood_metadata
+        crop_raster,
+        depth_inputs,
+        output_dir,
+        period_years,
+        crop_inputs=None,
+        flood_metadata=None,
     ):
         """Fallback processing using arcpy when rasterio is unavailable."""
         import os
+
+        flood_metadata = flood_metadata or {}
+        if crop_inputs is None:
+            crop_inputs = {
+                code: {
+                    "Name": name,
+                    "Value": value,
+                    "GrowingSeason": list(range(1, 13)),
+                }
+                for code, (name, value) in CROP_DEFINITIONS.items()
+            }
+        else:
+            for code, props in crop_inputs.items():
+                props.setdefault("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
 
         os.makedirs(output_dir, exist_ok=True)
 
@@ -50,20 +70,31 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
             damage_ratio = np.clip(depth_arr / FULL_DAMAGE_DEPTH_FT, 0, 1)
 
             for code, props in crop_inputs.items():
-                if flood_month not in props["GrowingSeason"]:
-                    diagnostics.append(
-                        {"Flood": label, "CropCode": code, "Issue": "Out of season"}
-                    )
-                    continue
-
-                mask = crop_arr == code
-                if not np.any(mask):
-                    diagnostics.append(
-                        {"Flood": label, "CropCode": code, "Issue": "Not present"}
-                    )
-                    continue
-
                 value = props["Value"]
+                name = props.get("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
+                mask = crop_arr == code
+                out_of_season = flood_month not in props["GrowingSeason"]
+                not_present = not np.any(mask)
+
+                if out_of_season or not_present:
+                    issue = "Out of season" if out_of_season else "Not present"
+                    diagnostics.append(
+                        {"Flood": label, "CropCode": code, "Issue": issue}
+                    )
+                    rows.append(
+                        {
+                            "CropCode": code,
+                            "CropName": name,
+                            "FloodedAcres": 0,
+                            "ValuePerAcre": value,
+                            "DollarsLost": 0.0,
+                            "EAD": 0.0,
+                            "ReturnPeriod": return_period,
+                            "FloodMonth": flood_month,
+                        }
+                    )
+                    continue
+
                 crop_damage = value * damage_ratio * mask
                 avg_damage = crop_damage.sum()
                 ead = avg_damage * (1 / return_period)
@@ -72,6 +103,7 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
                 rows.append(
                     {
                         "CropCode": code,
+                        "CropName": name,
                         "FloodedAcres": int(mask.sum()),
                         "ValuePerAcre": value,
                         "DollarsLost": round(float(avg_damage), 2),
