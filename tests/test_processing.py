@@ -114,6 +114,36 @@ def test_process_flood_damage_with_labeled_path(tmp_path):
     assert "depthA" in summaries
 
 
+def test_process_flood_damage_reports_all_crops(tmp_path):
+    crop = np.array([[1, 1], [1, 1]], dtype=np.uint16)
+    crop_path = tmp_path / "crop.tif"
+    create_raster(crop_path, crop, "EPSG:4326", from_origin(0, 2, 1, 1))
+
+    depth_arr = np.full((2, 2), 6.0, dtype=float)
+    crop_inputs = {
+        1: {"Value": 10, "GrowingSeason": [6]},
+        2: {"Value": 20, "GrowingSeason": [7]},  # out of season and absent
+    }
+    flood_metadata = {"floodA": {"return_period": 10, "flood_month": 6}}
+
+    out_dir = tmp_path / "out"
+    excel_path, summaries, diagnostics, rasters = process_flood_damage(
+        str(crop_path),
+        [("floodA", depth_arr)],
+        str(out_dir),
+        100,
+        crop_inputs,
+        flood_metadata,
+    )
+
+    df = summaries["floodA"]
+    assert set(df["CropCode"]) == {1, 2}
+    row2 = df[df["CropCode"] == 2].iloc[0]
+    assert row2["FloodedAcres"] == 0
+    assert row2["DollarsLost"] == 0
+    assert any(d["CropCode"] == 2 for d in diagnostics)
+
+
 def test_rasterize_polygon_zipped_shapefile(tmp_path):
     crop = np.zeros((10, 10), dtype=np.uint16)
     crop_path = tmp_path / "crop.tif"

@@ -50,20 +50,29 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
             damage_ratio = np.clip(depth_arr / FULL_DAMAGE_DEPTH_FT, 0, 1)
 
             for code, props in crop_inputs.items():
-                if flood_month not in props["GrowingSeason"]:
-                    diagnostics.append(
-                        {"Flood": label, "CropCode": code, "Issue": "Out of season"}
-                    )
-                    continue
-
-                mask = crop_arr == code
-                if not np.any(mask):
-                    diagnostics.append(
-                        {"Flood": label, "CropCode": code, "Issue": "Not present"}
-                    )
-                    continue
-
                 value = props["Value"]
+                mask = crop_arr == code
+                out_of_season = flood_month not in props["GrowingSeason"]
+                not_present = not np.any(mask)
+
+                if out_of_season or not_present:
+                    issue = "Out of season" if out_of_season else "Not present"
+                    diagnostics.append(
+                        {"Flood": label, "CropCode": code, "Issue": issue}
+                    )
+                    rows.append(
+                        {
+                            "CropCode": code,
+                            "FloodedAcres": 0,
+                            "ValuePerAcre": value,
+                            "DollarsLost": 0.0,
+                            "EAD": 0.0,
+                            "ReturnPeriod": return_period,
+                            "FloodMonth": flood_month,
+                        }
+                    )
+                    continue
+
                 crop_damage = value * damage_ratio * mask
                 avg_damage = crop_damage.sum()
                 ead = avg_damage * (1 / return_period)
