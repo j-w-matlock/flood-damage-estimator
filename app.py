@@ -275,6 +275,7 @@ if mode == "Direct Damages":
             st.dataframe(df)
             chart_data = (
                 df.sort_values("DollarsLost", ascending=False)
+                .head(10)
                 .set_index("CropName")["DollarsLost"]
             )
             fig_bar, ax_bar = plt.subplots()
@@ -394,6 +395,7 @@ elif mode == "Monte Carlo Simulation":
                         st.dataframe(df)
                         chart_data = (
                             df.sort_values("EAD_MC_Mean", ascending=False)
+                            .head(10)
                             .set_index("CropName")["EAD_MC_Mean"]
                         )
                         st.bar_chart(chart_data)

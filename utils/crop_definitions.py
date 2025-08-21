@@ -1,5 +1,26 @@
 """Mapping of crop codes to names and default values."""
 
+# Base per-acre crop values used for defaults
+BASE_CROP_VALUES = {
+    "Alfalfa": 696,
+    "Barley": 915,
+    "Camelina": 280,
+    "Cantaloupes": 7400,
+    "Clover/Wildflowers": 374,
+    "Corn": 778,
+    "Millet": 170,
+    "Oats": 262,
+    "Other Hay/Non Alfalfa": 374,
+    "Rye": 134,
+    "Sorghum": 298,
+    "Soybeans": 617,
+    "Sunflower": 415,
+    "Sweet Corn": 6516,
+    "Triticale": 480,
+    "Watermelons": 6368,
+    "Winter Wheat": 248,
+}
+
 CROP_DEFINITIONS = {
     1: ("Corn", 1200),
     2: ("Cotton", 1200),
@@ -136,3 +157,28 @@ CROP_DEFINITIONS = {
     250: ("Cranberries", 1200),
     254: ("Dbl Crop Barley/Soybeans", 1200),
 }
+
+
+# Update definitions with base values and double crop averages
+_abbr_map = {
+    "WinWht": "Winter Wheat",
+    "Cantaloupe": "Cantaloupes",
+}
+
+for code, (name, _val) in list(CROP_DEFINITIONS.items()):
+    if name.startswith("Dbl Crop"):
+        crops = name.replace("Dbl Crop", "").strip().split("/")
+        vals = []
+        for crop in crops:
+            crop = crop.strip()
+            crop = _abbr_map.get(crop, crop)
+            if crop in BASE_CROP_VALUES:
+                vals.append(BASE_CROP_VALUES[crop])
+            else:
+                vals = []
+                break
+        if vals:
+            CROP_DEFINITIONS[code] = (name, sum(vals) / len(vals))
+    else:
+        if name in BASE_CROP_VALUES:
+            CROP_DEFINITIONS[code] = (name, BASE_CROP_VALUES[name])
