@@ -30,10 +30,9 @@ If paths are supplied, the application reads the files directly with `rasterio`,
 
 Instead of supplying a polygon to define flooded areas, you can enable the *Uniform Flood Depth* checkbox and enter a depth value in feet. The app will duplicate the crop raster and assign the specified depth to every pixel.
 
-## Manual Depth Painting
+## Damage Map Visualization
 
-If you prefer to sketch flooded areas directly, enable **Manual Depth Painting** in the sidebar. Choose a depth (in 0.5&nbsp;ft increments) and draw polygons on the interactive map. Each polygon is rasterized with its selected depth and treated like any other depth grid when calculating damages.
-
+Output maps color-code damaged areas by crop type and include a legend with crop names for easy interpretation.
 
 ## Running Tests
 
