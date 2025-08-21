@@ -6,15 +6,15 @@ import rasterio
 from utils.processing import (
     process_flood_damage,
     run_monte_carlo,
-    polygon_mask_to_depth_array,
     constant_depth_array,
-    drawn_features_to_depth_array,
 )
+from utils.crop_definitions import CROP_DEFINITIONS
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import Counter
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as XLImage
+from matplotlib.patches import Patch
 
 st.set_page_config(layout="wide")
 st.title("🌾 Agricultural Flood Damage Estimator")
@@ -29,11 +29,17 @@ for key in [
     "damage_rasters",
     "label_map",
     "label_metadata",
+    "crop_inputs",
     "temp_files",
     "temp_dir",
 ]:
     if key not in st.session_state:
-        st.session_state[key] = [] if key == "temp_files" else None
+        if key == "temp_files":
+            st.session_state[key] = []
+        elif key == "crop_inputs":
+            st.session_state[key] = {}
+        else:
+            st.session_state[key] = None
 
     files = st.session_state.get("temp_files") or []
     for path in files:
@@ -95,11 +101,6 @@ uniform_depth_ft = st.sidebar.number_input(
     disabled=not use_uniform_depth,
     help="Flood depth applied everywhere when using the uniform option",
 )
-use_manual_mask = st.sidebar.checkbox(
-    "🎨 Manual Depth Painting",
-    value=False,
-    help="Draw polygons on a map with selectable depth values",
-)
 period_years = st.sidebar.number_input(
     "📆 Analysis Period (Years)",
     min_value=1,
@@ -137,24 +138,32 @@ if crop_file:
 
     st.markdown("### 🌱 Crop Values and Growing Seasons")
     for code in codes:
+        default_name, default_val = CROP_DEFINITIONS.get(code, ("", 0))
+        name = st.text_input(
+            f"Crop {code} – Name",
+            value=default_name,
+            key=f"name_{code}",
+            help="Descriptive name for this crop code",
+        )
         val = st.number_input(
-            f"Crop {code} – $/Acre",
-            value=5500,
+            f"{name} – $/Acre",
+            value=float(default_val or 0),
             step=100,
             key=f"val_{code}",
-            help="Enter average crop value per acre for this code",
+            help="Enter average crop value per acre for this crop",
         )
         season = st.multiselect(
-            f"Crop {code} – Growing Months",
+            f"{name} – Growing Months",
             list(range(1, 13)),
             default=list(range(4, 10)),
             key=f"season_{code}",
             help="Choose the active growing months when this crop is vulnerable to flooding",
         )
-        crop_inputs[code] = {"Value": val, "GrowingSeason": season}
+        crop_inputs[code] = {"Name": name, "Value": val, "GrowingSeason": season}
+    st.session_state.crop_inputs = crop_inputs
 
-# Process flood rasters or uniform depth or manual mask
-if depth_files or use_uniform_depth or use_manual_mask:
+# Process flood rasters or uniform depth
+if depth_files or use_uniform_depth:
     st.markdown("### ⚙️ Flood Raster Settings")
     depth_inputs = []
 
@@ -204,63 +213,6 @@ if depth_files or use_uniform_depth or use_manual_mask:
         label_to_filename[label] = label
         label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
 
-    if use_manual_mask and crop_file:
-        st.markdown("### 🎨 Manual Depth Painting")
-        if "drawn_features" not in st.session_state:
-            st.session_state.drawn_features = []
-        if st.button("Reset Drawings"):
-            st.session_state.drawn_features = []
-
-        brush_depth = st.select_slider(
-            "Current Brush Depth",
-            options=[i / 2 for i in range(1, 13)],
-            format_func=lambda x: f"{x} ft",
-        )
-
-        import folium
-        from folium.plugins import Draw
-        from streamlit_folium import st_folium
-
-        m = folium.Map(tiles="cartodbpositron")
-        Draw(export=False).add_to(m)
-        map_data = st_folium(
-            m,
-            key="draw_map",
-            height=400,
-            width=700,
-            returned_objects=["last_active_drawing"],
-        )
-
-        if map_data.get("last_active_drawing"):
-            feat = map_data["last_active_drawing"]
-            feat.setdefault("properties", {})["depth"] = float(brush_depth)
-            st.session_state.drawn_features.append(feat)
-
-        if st.session_state.drawn_features:
-            st.info(f"Drawn polygons: {len(st.session_state.drawn_features)}")
-            rp = st.number_input(
-                "Return Period: Manual Mask",
-                min_value=1,
-                value=100,
-                key="rp_manual",
-                help="How often this flood event is expected to occur",
-            )
-            mo = st.number_input(
-                "Flood Month: Manual Mask",
-                min_value=1,
-                max_value=12,
-                value=6,
-                key="mo_manual",
-                help="Month of flood to compare against crop growing season",
-            )
-
-            depth_arr = drawn_features_to_depth_array(
-                st.session_state.drawn_features, st.session_state.crop_path
-            )
-            label = "manual_mask"
-            depth_inputs.append((label, depth_arr))
-            label_to_filename[label] = label
-            label_to_metadata[label] = {"return_period": rp, "flood_month": mo}
 
     st.session_state.depth_inputs = depth_inputs
     st.session_state.label_map = label_to_filename
@@ -269,7 +221,7 @@ if depth_files or use_uniform_depth or use_manual_mask:
 # Direct Damages Mode
 if mode == "Direct Damages":
     if st.button("🚀 Run Flood Damage Estimator"):
-        if not (crop_file and (depth_files or use_uniform_depth or use_manual_mask)):
+        if not (crop_file and (depth_files or use_uniform_depth)):
             st.error(
                 "❌ Please upload a cropland raster and at least one flood source."
             )
@@ -307,7 +259,8 @@ if mode == "Direct Damages":
             with st.expander("ℹ️ Column Definitions"):
                 st.markdown(
                     """
-                - **CropCode**: CropScape code for crop type.
+                - **CropCode**: CropScape numerical code.
+                - **CropName**: Descriptive crop type.
                 - **FloodedAcres**: Area affected (1 pixel ≈ 0.222 acres).
                 - **ValuePerAcre**: Input value per acre for the crop.
                 - **DollarsLost**: Total crop damage.
@@ -317,11 +270,11 @@ if mode == "Direct Damages":
             st.dataframe(df)
             chart_data = (
                 df.sort_values("DollarsLost", ascending=False)
-                .set_index("CropCode")["DollarsLost"]
+                .set_index("CropName")["DollarsLost"]
             )
             fig_bar, ax_bar = plt.subplots()
             ax_bar.bar(chart_data.index.astype(str), chart_data.values)
-            ax_bar.set_xlabel("Crop Code")
+            ax_bar.set_xlabel("Crop Type")
             ax_bar.set_ylabel("Dollars Lost")
             st.pyplot(fig_bar)
             bar_path = os.path.join(
@@ -338,11 +291,27 @@ if mode == "Direct Damages":
         for label, arrs in st.session_state.damage_rasters.items():
             st.subheader(f"🗺️ Damage Raster – {label}")
             crop_arr = arrs.get("crop") if isinstance(arrs, dict) else arrs
-            masked = np.ma.masked_where(crop_arr == 0, crop_arr)
+            codes = [c for c in np.unique(crop_arr) if c != 0]
+            name_map = {
+                c: st.session_state.crop_inputs.get(c, {}).get(
+                    "Name", CROP_DEFINITIONS.get(c, (str(c), 0))[0]
+                )
+                for c in codes
+            }
+            cmap = plt.cm.get_cmap("tab20", len(codes) or 1)
+            code_to_idx = {code: idx for idx, code in enumerate(codes)}
+            indexed = np.vectorize(lambda x: code_to_idx.get(x, -1))(crop_arr)
+            masked = np.ma.masked_where(crop_arr == 0, indexed)
             fig, ax = plt.subplots()
-            cax = ax.imshow(masked, cmap="tab20")
-            fig.colorbar(cax, ax=ax, label="Crop Code")
+            im = ax.imshow(masked, cmap=cmap, vmin=0, vmax=max(len(codes) - 1, 0))
             ax.set_title(f"Damaged Crops: {label}")
+            handles = [
+                Patch(facecolor=cmap(code_to_idx[code]), label=name_map.get(code, str(code)))
+                for code in codes
+            ]
+            if handles:
+                ax.legend(handles=handles, title="Crop Type", bbox_to_anchor=(1.05, 1), loc="upper left")
+            ax.axis("off")
             st.pyplot(fig)
             raster_path = os.path.join(
                 st.session_state.temp_dir.name, f"raster_{label}.png"
@@ -374,7 +343,7 @@ if mode == "Direct Damages":
 # Monte Carlo Mode
 elif mode == "Monte Carlo Simulation":
     if st.button("🧪 Run Monte Carlo Simulation"):
-        if not (crop_file and (depth_files or use_uniform_depth or use_manual_mask)):
+        if not (crop_file and (depth_files or use_uniform_depth)):
             st.error(
                 "❌ Please upload a cropland raster and at least one flood source."
             )
@@ -410,7 +379,8 @@ elif mode == "Monte Carlo Simulation":
                         with st.expander("ℹ️ Column Definitions"):
                             st.markdown(
                                 """
-                            - **CropCode**: CropScape code for crop type.
+                            - **CropCode**: CropScape numerical code.
+                            - **CropName**: Descriptive crop type.
                             - **EAD_MC_Mean**: Mean simulated EAD from Monte Carlo.
                             - **EAD_MC_5th / 95th**: Uncertainty bounds (percentiles).
                             - **Original_EAD**: Deterministic EAD value for comparison.
@@ -419,7 +389,7 @@ elif mode == "Monte Carlo Simulation":
                         st.dataframe(df)
                         chart_data = (
                             df.sort_values("EAD_MC_Mean", ascending=False)
-                            .set_index("CropCode")["EAD_MC_Mean"]
+                            .set_index("CropName")["EAD_MC_Mean"]
                         )
                         st.bar_chart(chart_data)
 
