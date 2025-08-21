@@ -282,6 +282,7 @@ if mode == "Direct Damages":
             ax_bar.bar(chart_data.index.astype(str), chart_data.values)
             ax_bar.set_xlabel("Crop Type")
             ax_bar.set_ylabel("Dollars Lost")
+            ax_bar.tick_params(axis="x", labelrotation=90)
             st.pyplot(fig_bar)
             bar_path = os.path.join(
                 st.session_state.temp_dir.name, f"bar_{label}.png"
@@ -398,7 +399,13 @@ elif mode == "Monte Carlo Simulation":
                             .head(10)
                             .set_index("CropName")["EAD_MC_Mean"]
                         )
-                        st.bar_chart(chart_data)
+                        fig_mc, ax_mc = plt.subplots()
+                        ax_mc.bar(chart_data.index.astype(str), chart_data.values)
+                        ax_mc.set_xlabel("Crop Type")
+                        ax_mc.set_ylabel("EAD_MC_Mean")
+                        ax_mc.tick_params(axis="x", labelrotation=90)
+                        st.pyplot(fig_mc)
+                        plt.close(fig_mc)
 
                     with pd.ExcelWriter(
                         result_path, mode="a", engine="openpyxl"
