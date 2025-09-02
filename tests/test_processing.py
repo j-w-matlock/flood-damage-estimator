@@ -197,6 +197,26 @@ def test_process_flood_damage_includes_unlisted_crops(tmp_path):
     assert name == "999"
 
 
+def test_process_flood_damage_uses_defined_values(tmp_path):
+    crop = np.array([[3]], dtype=np.uint16)
+    crop_path = tmp_path / "crop.tif"
+    create_raster(crop_path, crop, "EPSG:4326", from_origin(0, 1, 1, 1))
+
+    depth_arr = np.full((1, 1), 6.0, dtype=float)
+    # Provide an incorrect default value that should be overridden
+    crop_inputs = {3: {"Value": 1200, "GrowingSeason": [6]}}
+    flood_metadata = {"floodA": {"return_period": 10, "flood_month": 6}}
+
+    out_dir = tmp_path / "out"
+    _, summaries, _, _ = process_flood_damage(
+        str(crop_path), [("floodA", depth_arr)], str(out_dir), 100, crop_inputs, flood_metadata
+    )
+
+    df = summaries["floodA"]
+    val = df[df["CropCode"] == 3]["ValuePerAcre"].iloc[0]
+    assert val == CROP_DEFINITIONS[3][1]
+
+
 def test_pixel_to_acre_conversion(tmp_path):
     crop = np.array([[1]], dtype=np.uint16)
     pixel_size = 30  # meters
@@ -344,5 +364,5 @@ def test_run_monte_carlo_month_uncertainty(tmp_path):
     original_ead = summaries["floodA"].iloc[0]["EAD"]
     mc = run_monte_carlo(summaries, flood_metadata, 1000, 0, 0, month_uncertainty=True)
     mc_mean = mc["floodA"].iloc[0]["EAD_MC_Mean"]
-
-    assert mc_mean == pytest.approx(original_ead / 12, rel=0.2)
+    expected = round(original_ead / 12, 2)
+    assert mc_mean == pytest.approx(expected, rel=0.2)

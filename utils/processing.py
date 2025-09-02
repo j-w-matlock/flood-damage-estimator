@@ -151,6 +151,10 @@ def process_flood_damage(
         crop_inputs = {k: v for k, v in crop_inputs.items() if k != 0}
         for code, props in crop_inputs.items():
             props.setdefault("Name", CROP_DEFINITIONS.get(code, (str(code), 0))[0])
+            if code in CROP_DEFINITIONS:
+                props["Value"] = CROP_DEFINITIONS[code][1]
+            else:
+                props.setdefault("Value", 0)
         for code in crop_codes_present:
             if code not in crop_inputs:
                 name, value = CROP_DEFINITIONS.get(code, (str(code), 0))

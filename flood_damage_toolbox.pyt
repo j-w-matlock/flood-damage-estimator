@@ -41,6 +41,10 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
             for code, props in crop_inputs.items():
                 # Default to the crop code string when a definition is missing
                 props.setdefault("Name", CROP_DEFINITIONS.get(code, (str(code), 0))[0])
+                if code in CROP_DEFINITIONS:
+                    props["Value"] = CROP_DEFINITIONS[code][1]
+                else:
+                    props.setdefault("Value", 0)
 
         os.makedirs(output_dir, exist_ok=True)
 
