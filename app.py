@@ -147,15 +147,14 @@ if crop_file:
             key=f"name_{code}",
             help="Descriptive name for this crop code",
         )
-        # Streamlit's number_input requires all numeric parameters to share the
-        # same type (int vs. float).  ``default_val`` is cast to ``float`` above,
-        # but ``step`` was provided as an ``int`` which triggered a
-        # StreamlitMixedNumericTypesError.  Use a float for ``step`` so the value
-        # and step have matching types.
+        # ``default_val`` is cast to ``float`` above, so ``step`` must also be a
+        # float. Use a small increment and explicit format so precise dollar
+        # amounts (e.g., 1193.19) are preserved instead of being rounded.
         val = st.number_input(
             f"{name} – $/Acre",
             value=float(default_val or 0),
-            step=100.0,
+            step=0.01,
+            format="%.2f",
             key=f"val_{code}",
             help="Enter average crop value per acre for this crop",
         )
