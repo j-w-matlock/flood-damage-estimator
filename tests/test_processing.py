@@ -167,12 +167,14 @@ def test_process_flood_damage_includes_names(tmp_path):
 
 
 def test_process_flood_damage_includes_unlisted_crops(tmp_path):
-    crop = np.array([[1, 2]], dtype=np.uint16)
+    # Include a crop code (999) that's absent from CROP_DEFINITIONS to exercise
+    # the fallback naming logic.
+    crop = np.array([[1, 999]], dtype=np.uint16)
     crop_path = tmp_path / "crop.tif"
     create_raster(crop_path, crop, "EPSG:3857", from_origin(0, 1, 1, 1))
 
     depth_arr = np.full((1, 2), 6.0, dtype=float)
-    crop_inputs = {1: {"Value": 10, "GrowingSeason": [6]}}  # crop 2 omitted
+    crop_inputs = {1: {"Value": 10, "GrowingSeason": [6]}}  # crop 999 omitted
     flood_metadata = {"floodA": {"return_period": 10, "flood_month": 6}}
 
     out_dir = tmp_path / "out"
@@ -186,7 +188,12 @@ def test_process_flood_damage_includes_unlisted_crops(tmp_path):
     )
 
     df = summaries["floodA"]
-    assert set(df["CropCode"]) == {1, 2}
+    assert set(df["CropCode"]) == {1, 999}
+    # Crop code 999 was not supplied in crop_inputs or the definitions, so its
+    # name should default to the string representation of the code rather than
+    # being blank.
+    name = df[df["CropCode"] == 999]["CropName"].iloc[0]
+    assert name == "999"
 
 
 def test_pixel_to_acre_conversion(tmp_path):

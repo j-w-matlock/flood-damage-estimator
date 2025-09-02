@@ -39,7 +39,8 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
             }
         else:
             for code, props in crop_inputs.items():
-                props.setdefault("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
+                # Default to the crop code string when a definition is missing
+                props.setdefault("Name", CROP_DEFINITIONS.get(code, (str(code), 0))[0])
 
         os.makedirs(output_dir, exist_ok=True)
 
@@ -71,7 +72,7 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
 
             for code, props in crop_inputs.items():
                 value = props["Value"]
-                name = props.get("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
+                name = props.get("Name", CROP_DEFINITIONS.get(code, (str(code), 0))[0])
                 mask = crop_arr == code
                 out_of_season = flood_month not in props["GrowingSeason"]
                 not_present = not np.any(mask)
