@@ -197,13 +197,13 @@ def test_process_flood_damage_includes_unlisted_crops(tmp_path):
     assert name == "999"
 
 
-def test_process_flood_damage_uses_defined_values(tmp_path):
+def test_process_flood_damage_respects_user_values(tmp_path):
     crop = np.array([[3]], dtype=np.uint16)
     crop_path = tmp_path / "crop.tif"
     create_raster(crop_path, crop, "EPSG:4326", from_origin(0, 1, 1, 1))
 
     depth_arr = np.full((1, 1), 6.0, dtype=float)
-    # Provide an incorrect default value that should be overridden
+    # Provide a custom value that should be preserved
     crop_inputs = {3: {"Value": 1200, "GrowingSeason": [6]}}
     flood_metadata = {"floodA": {"return_period": 10, "flood_month": 6}}
 
@@ -214,7 +214,7 @@ def test_process_flood_damage_uses_defined_values(tmp_path):
 
     df = summaries["floodA"]
     val = df[df["CropCode"] == 3]["ValuePerAcre"].iloc[0]
-    assert val == CROP_DEFINITIONS[3][1]
+    assert val == 1200
 
 
 def test_pixel_to_acre_conversion(tmp_path):
