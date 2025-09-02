@@ -82,19 +82,20 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
                     diagnostics.append(
                         {"Flood": label, "CropCode": code, "Issue": issue}
                     )
-                    rows.append(
-                        {
-                            "CropCode": code,
-                            "CropName": name,
-                            "FloodedAcres": 0,
-                            "ValuePerAcre": value,
-                            "DollarsLost": 0.0,
-                            "EAD": 0.0,
-                            "ReturnPeriod": return_period,
-                            "FloodMonth": flood_month,
-                        }
-                    )
-                    continue
+                rows.append(
+                    {
+                        "CropCode": code,
+                        "CropName": name,
+                        "FloodedAcres": 0,
+                        "ValuePerAcre": value,
+                        "DollarsLost": 0.0,
+                        "EAD": 0.0,
+                        "ReturnPeriod": return_period,
+                        "FloodMonth": flood_month,
+                        "GrowingSeason": props["GrowingSeason"],
+                    }
+                )
+                continue
 
                 crop_damage = value * damage_ratio * mask
                 avg_damage = crop_damage.sum()
@@ -111,6 +112,7 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
                         "EAD": round(float(ead), 2),
                         "ReturnPeriod": return_period,
                         "FloodMonth": flood_month,
+                        "GrowingSeason": props["GrowingSeason"],
                     }
                 )
 
@@ -152,7 +154,12 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
         return excel_path, summaries, diagnostics, {}
 
     def run_monte_carlo(
-        summaries, flood_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft
+        summaries,
+        flood_metadata,
+        samples,
+        value_uncertainty_pct,
+        depth_uncertainty_ft,
+        month_uncertainty=False,
     ):
         """Perform Monte Carlo EAD calculations without rasterio."""
         results = {}
@@ -168,11 +175,19 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
                 depth_samples = np.random.normal(
                     1.0, depth_uncertainty_ft / FULL_DAMAGE_DEPTH_FT, samples
                 )
+
+                if month_uncertainty:
+                    month_samples = np.random.randint(1, 13, samples)
+                else:
+                    month_samples = np.full(samples, row["FloodMonth"])
+                in_season = np.isin(month_samples, row.get("GrowingSeason", []))
+
                 losses = (
                     value_samples
                     * depth_samples
                     * row["FloodedAcres"]
                     * (1 / return_period)
+                    * in_season
                 )
                 rows.append(
                     {

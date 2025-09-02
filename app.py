@@ -123,6 +123,11 @@ value_sd = st.sidebar.number_input(
     value=10,
     help="Assumed variability in per-acre crop values (used only in Monte Carlo)",
 )
+month_uncertainty = st.sidebar.checkbox(
+    "📅 Randomize Flood Month",
+    value=False,
+    help="If checked, Monte Carlo simulations will sample flood months uniformly across the year",
+)
 
 crop_inputs, label_to_filename, label_to_metadata = {}, {}, {}
 
@@ -376,6 +381,7 @@ elif mode == "Monte Carlo Simulation":
                         samples,
                         value_sd,
                         depth_sd,
+                        month_uncertainty,
                     )
                     st.session_state.result_path = result_path
 

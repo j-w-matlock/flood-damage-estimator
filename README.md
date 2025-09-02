@@ -54,7 +54,7 @@ A Python toolbox named `flood_damage_toolbox.pyt` is provided for running the mo
 2. Open the **Flood Damage Estimator** tool.
 3. Provide a crop raster, one or more depth rasters, a CSV with crop codes, values and growing seasons, and an output folder.
 4. Enter a return period and flood month for **each** depth raster (the lists must match in length).
-5. Optionally enable Monte Carlo simulation and adjust the uncertainty parameters.
+5. Optionally enable Monte Carlo simulation and adjust the uncertainty parameters, including a setting to randomize the flood month so events can occur in any part of the year.
 
 The tool writes an Excel summary in the chosen output folder, mirroring the results of the Streamlit application.
 

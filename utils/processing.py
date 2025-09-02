@@ -227,6 +227,7 @@ def process_flood_damage(
                         "EAD": 0.0,
                         "ReturnPeriod": return_period,
                         "FloodMonth": flood_month,
+                        "GrowingSeason": props["GrowingSeason"],
                     }
                 )
                 continue
@@ -247,6 +248,7 @@ def process_flood_damage(
                     "EAD": round(ead, 2),
                     "ReturnPeriod": return_period,
                     "FloodMonth": flood_month,
+                    "GrowingSeason": props["GrowingSeason"],
                 }
             )
 
@@ -301,12 +303,19 @@ def process_flood_damage(
 
 
 def run_monte_carlo(
-    summaries, flood_metadata, samples, value_uncertainty_pct, depth_uncertainty_ft
+    summaries,
+    flood_metadata,
+    samples,
+    value_uncertainty_pct,
+    depth_uncertainty_ft,
+    month_uncertainty=False,
 ):
     """Perform Monte Carlo EAD calculations.
 
     The standard deviation of depth error is expressed relative to
     :data:`FULL_DAMAGE_DEPTH_FT` feet (6 ft by default).
+    When ``month_uncertainty`` is ``True``, flood months are sampled uniformly
+    from all 12 months and compared against each crop's growing season.
     """
 
     results = {}
@@ -320,11 +329,19 @@ def run_monte_carlo(
             depth_samples = np.random.normal(
                 1.0, depth_uncertainty_ft / FULL_DAMAGE_DEPTH_FT, samples
             )
+
+            if month_uncertainty:
+                month_samples = np.random.randint(1, 13, samples)
+            else:
+                month_samples = np.full(samples, row["FloodMonth"])
+            in_season = np.isin(month_samples, row.get("GrowingSeason", []))
+
             losses = (
                 value_samples
                 * depth_samples
                 * row["FloodedAcres"]
                 * (1 / return_period)
+                * in_season
             )
 
             rows.append(
