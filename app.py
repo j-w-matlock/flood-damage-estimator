@@ -138,7 +138,9 @@ if crop_file:
 
     st.markdown("### 🌱 Crop Values and Growing Seasons")
     for code in codes:
-        default_name, default_val = CROP_DEFINITIONS.get(code, ("", 0))
+        # Use the crop code itself as a fallback name so undefined codes are
+        # clearly identifiable in the UI instead of appearing blank.
+        default_name, default_val = CROP_DEFINITIONS.get(code, (str(code), 0))
         name = st.text_input(
             f"Crop {code} – Name",
             value=default_name,

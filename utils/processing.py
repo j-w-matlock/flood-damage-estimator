@@ -141,8 +141,8 @@ def process_flood_damage(
     if crop_inputs is None:
         crop_inputs = {
             code: {
-                "Name": CROP_DEFINITIONS.get(code, ("", 0))[0],
-                "Value": CROP_DEFINITIONS.get(code, ("", 0))[1],
+                "Name": CROP_DEFINITIONS.get(code, (str(code), 0))[0],
+                "Value": CROP_DEFINITIONS.get(code, (str(code), 0))[1],
                 "GrowingSeason": list(range(1, 13)),
             }
             for code in crop_codes_present
@@ -150,10 +150,10 @@ def process_flood_damage(
     else:
         crop_inputs = {k: v for k, v in crop_inputs.items() if k != 0}
         for code, props in crop_inputs.items():
-            props.setdefault("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
+            props.setdefault("Name", CROP_DEFINITIONS.get(code, (str(code), 0))[0])
         for code in crop_codes_present:
             if code not in crop_inputs:
-                name, value = CROP_DEFINITIONS.get(code, ("", 0))
+                name, value = CROP_DEFINITIONS.get(code, (str(code), 0))
                 crop_inputs[code] = {
                     "Name": name,
                     "Value": value,
@@ -206,7 +206,7 @@ def process_flood_damage(
 
         for code, props in crop_inputs.items():
             value = props["Value"]
-            name = props.get("Name", CROP_DEFINITIONS.get(code, ("", 0))[0])
+            name = props.get("Name", CROP_DEFINITIONS.get(code, (str(code), 0))[0])
 
             mask = aligned_crop == code
             out_of_season = flood_month not in props["GrowingSeason"]
