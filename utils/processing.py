@@ -9,6 +9,7 @@ import geopandas as gpd
 from shapely.geometry import shape
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
+import re
 
 from .crop_definitions import (
     CROP_DEFINITIONS,
@@ -21,6 +22,23 @@ FULL_DAMAGE_DEPTH_FT = 6.0
 
 # Conversion factor from square meters to acres
 SQ_METERS_TO_ACRES = 0.000247105
+
+
+INVALID_SHEET_CHARS = r"[\[\]:\*\?/\\]"
+
+
+def sanitize_label(label, max_length=31):
+    """Return a filesystem and Excel-safe version of *label*.
+
+    Excel sheet names cannot contain ``[]:*?/\`` and must be <=31 characters.
+    This helper replaces forbidden characters with underscores and truncates
+    the result so that downstream file writes do not crash.
+    """
+
+    cleaned = re.sub(INVALID_SHEET_CHARS, "_", str(label))
+    if len(cleaned) > max_length:
+        cleaned = cleaned[:max_length]
+    return cleaned or "sheet"
 
 
 def align_crop_to_depth(crop_path, depth_path):
@@ -178,6 +196,7 @@ def process_flood_damage(
     for item in depth_inputs:
         if isinstance(item, tuple):
             label, data = item
+            label = sanitize_label(label)
             meta = flood_metadata.get(label, {})
             return_period = meta.get("return_period", 100)
             flood_month = meta.get("flood_month", 6)
@@ -197,7 +216,9 @@ def process_flood_damage(
                     ).astype("float32")
         else:
             depth_path = item
-            label = os.path.splitext(os.path.basename(depth_path))[0]
+            label = sanitize_label(
+                os.path.splitext(os.path.basename(depth_path))[0]
+            )
             meta = flood_metadata.get(label, {})
             return_period = meta.get("return_period", 100)
             flood_month = meta.get("flood_month", 6)
