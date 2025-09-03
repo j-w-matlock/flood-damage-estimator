@@ -154,7 +154,7 @@ def process_flood_damage(
     flood_metadata = flood_metadata or {}
 
     os.makedirs(output_dir, exist_ok=True)
-    summaries, diagnostics, damage_rasters = {}, [], {}
+    summaries, diagnostics, damage_raster_paths = {}, [], {}
 
     with rasterio.open(crop_path) as base_crop_src:
         base_crop_arr = base_crop_src.read(1)
@@ -306,19 +306,23 @@ def process_flood_damage(
         summaries[label] = df
 
         damage_arr = damage_arr.astype(np.float32)
-        damage_crop_arr = np.where(damage_arr > 0, aligned_crop, 0)
-        damage_rasters[label] = {
-            "ratio": damage_arr,
-            "crop": damage_crop_arr,
-        }
+        damage_crop_arr = np.where(damage_arr > 0, aligned_crop, 0).astype(
+            aligned_crop.dtype
+        )
 
-        damage_profile = crop_profile.copy()
-        damage_profile["dtype"] = "float32"
-
-        with rasterio.open(
-            os.path.join(output_dir, f"damage_{label}.tif"), "w", **damage_profile
-        ) as dst:
+        ratio_profile = crop_profile.copy()
+        ratio_profile["dtype"] = "float32"
+        ratio_path = os.path.join(output_dir, f"damage_{label}.tif")
+        with rasterio.open(ratio_path, "w", **ratio_profile) as dst:
             dst.write(damage_arr, 1)
+
+        crop_profile_out = crop_profile.copy()
+        crop_profile_out["dtype"] = aligned_crop.dtype
+        crop_path = os.path.join(output_dir, f"damage_crops_{label}.tif")
+        with rasterio.open(crop_path, "w", **crop_profile_out) as dst:
+            dst.write(damage_crop_arr, 1)
+
+        damage_raster_paths[label] = {"ratio": ratio_path, "crop": crop_path}
 
     # Optional trapezoidal integration
     trapezoid_rows = []
@@ -353,7 +357,7 @@ def process_flood_damage(
             writer, sheet_name="Diagnostics", index=False
         )
 
-    return excel_path, summaries, diagnostics, damage_rasters
+    return excel_path, summaries, diagnostics, damage_raster_paths
 
 
 def run_monte_carlo(
