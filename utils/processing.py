@@ -28,7 +28,7 @@ INVALID_SHEET_CHARS = r"[\[\]:\*\?/\\]"
 
 
 def sanitize_label(label, max_length=31):
-    """Return a filesystem and Excel-safe version of *label*.
+    r"""Return a filesystem and Excel-safe version of *label*.
 
     Excel sheet names cannot contain ``[]:*?/\`` and must be <=31 characters.
     This helper replaces forbidden characters with underscores and truncates
