@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 from rasterio.enums import Resampling
+from rasterio.vrt import WarpedVRT
 from rasterio.warp import reproject
 from rasterio import features
 import geopandas as gpd
@@ -157,176 +158,211 @@ def process_flood_damage(
     summaries, diagnostics, damage_raster_paths = {}, [], {}
 
     with rasterio.open(crop_path) as base_crop_src:
-        base_crop_arr = base_crop_src.read(1)
         base_crop_profile = base_crop_src.profile.copy()
-        crop_codes_present = [c for c in np.unique(base_crop_arr) if c != 0]
+        unique_codes = set()
+        for _, window in base_crop_src.block_windows(1):
+            block = base_crop_src.read(1, window=window)
+            unique_codes.update(np.unique(block))
+        crop_codes_present = [c for c in unique_codes if c != 0]
 
-    if crop_inputs is None:
-        crop_inputs = {
-            code: {
-                "Name": CROP_DEFINITIONS.get(code, (str(code), 0))[0],
-                "Value": CROP_DEFINITIONS.get(code, (str(code), 0))[1],
-                "GrowingSeason": CROP_GROWING_SEASONS.get(
-                    code, DEFAULT_GROWING_SEASON
-                ),
-            }
-            for code in crop_codes_present
-        }
-    else:
-        crop_inputs = {k: v for k, v in crop_inputs.items() if k != 0}
-        for code, props in crop_inputs.items():
-            default_name, default_value = CROP_DEFINITIONS.get(code, (str(code), 0))
-            props.setdefault("Name", default_name)
-            props.setdefault("Value", default_value)
-            props.setdefault(
-                "GrowingSeason",
-                CROP_GROWING_SEASONS.get(code, DEFAULT_GROWING_SEASON),
-            )
-        for code in crop_codes_present:
-            if code not in crop_inputs:
-                name, value = CROP_DEFINITIONS.get(code, (str(code), 0))
-                crop_inputs[code] = {
-                    "Name": name,
-                    "Value": value,
+        if crop_inputs is None:
+            crop_inputs = {
+                code: {
+                    "Name": CROP_DEFINITIONS.get(code, (str(code), 0))[0],
+                    "Value": CROP_DEFINITIONS.get(code, (str(code), 0))[1],
                     "GrowingSeason": CROP_GROWING_SEASONS.get(
                         code, DEFAULT_GROWING_SEASON
                     ),
                 }
-
-    for item in depth_inputs:
-        if isinstance(item, tuple):
-            label, data = item
-            label = sanitize_label(label)
-            meta = flood_metadata.get(label, {})
-            return_period = meta.get("return_period", 100)
-            flood_month = meta.get("flood_month", 6)
-
-            if isinstance(data, np.ndarray):
-                depth_arr = data.astype("float32")
-                aligned_crop = base_crop_arr
-                crop_profile = base_crop_profile
-            else:
-                depth_path = data
-                aligned_crop, crop_profile = align_crop_to_depth(crop_path, depth_path)
-                with rasterio.open(depth_path) as depth_src:
-                    depth_arr = depth_src.read(
-                        1,
-                        out_shape=(aligned_crop.shape),
-                        resampling=Resampling.nearest,
-                    ).astype("float32")
+                for code in crop_codes_present
+            }
         else:
-            depth_path = item
-            label = sanitize_label(
-                os.path.splitext(os.path.basename(depth_path))[0]
-            )
-            meta = flood_metadata.get(label, {})
-            return_period = meta.get("return_period", 100)
-            flood_month = meta.get("flood_month", 6)
-
-            aligned_crop, crop_profile = align_crop_to_depth(crop_path, depth_path)
-
-            with rasterio.open(depth_path) as depth_src:
-                depth_arr = depth_src.read(
-                    1,
-                    out_shape=(aligned_crop.shape),
-                    resampling=Resampling.nearest,
-                ).astype("float32")
-
-        damage_arr = np.zeros_like(aligned_crop, dtype=np.float32)
-        rows = []
-
-        damage_ratio = depth_arr
-        damage_ratio /= FULL_DAMAGE_DEPTH_FT
-        np.clip(damage_ratio, 0, 1, out=damage_ratio)
-
-        crs = crop_profile["crs"]
-        unit_factor = 1.0
-        if crs and crs.is_projected:
-            try:
-                lf = crs.linear_units_factor
-                unit_factor = lf[1] if isinstance(lf, tuple) else float(lf)
-            except Exception:
-                pass
-        pixel_area_acres = (
-            abs(crop_profile["transform"][0] * crop_profile["transform"][4])
-            * (unit_factor ** 2)
-            * SQ_METERS_TO_ACRES
-        )
-
-        mask = np.zeros_like(aligned_crop, dtype=bool)
-        for code, props in crop_inputs.items():
-            value = props["Value"]
-            name = props.get("Name", CROP_DEFINITIONS.get(code, (str(code), 0))[0])
-
-            np.equal(aligned_crop, code, out=mask)
-            out_of_season = flood_month not in props["GrowingSeason"]
-            not_present = not np.any(mask)
-
-            if out_of_season or not_present:
-                issue = "Out of season" if out_of_season else "Not present"
-                diagnostics.append(
-                    {"Flood": label, "CropCode": code, "Issue": issue}
+            crop_inputs = {k: v for k, v in crop_inputs.items() if k != 0}
+            for code, props in crop_inputs.items():
+                default_name, default_value = CROP_DEFINITIONS.get(code, (str(code), 0))
+                props.setdefault("Name", default_name)
+                props.setdefault("Value", default_value)
+                props.setdefault(
+                    "GrowingSeason",
+                    CROP_GROWING_SEASONS.get(code, DEFAULT_GROWING_SEASON),
                 )
-                rows.append(
-                    {
-                        "CropCode": code,
-                        "CropName": name,
-                        "FloodedPixels": 0,
-                        "FloodedAcres": 0.0,
-                        "ValuePerAcre": value,
-                        "DollarsLost": 0.0,
-                        "EAD": 0.0,
-                        "ReturnPeriod": return_period,
-                        "FloodMonth": flood_month,
-                        "GrowingSeason": props["GrowingSeason"],
+            for code in crop_codes_present:
+                if code not in crop_inputs:
+                    name, value = CROP_DEFINITIONS.get(code, (str(code), 0))
+                    crop_inputs[code] = {
+                        "Name": name,
+                        "Value": value,
+                        "GrowingSeason": CROP_GROWING_SEASONS.get(
+                            code, DEFAULT_GROWING_SEASON
+                        ),
                     }
+    
+        for item in depth_inputs:
+            if isinstance(item, tuple):
+                label, data = item
+                label = sanitize_label(label)
+                meta = flood_metadata.get(label, {})
+                return_period = meta.get("return_period", 100)
+                flood_month = meta.get("flood_month", 6)
+    
+                if isinstance(data, np.ndarray):
+                    depth_arr = data.astype("float32")
+                    crop_profile = base_crop_profile
+                    windows = list(base_crop_src.block_windows(1))
+    
+                    def read_depth(window, arr=depth_arr):
+                        r0, c0 = window.row_off, window.col_off
+                        return arr[r0 : r0 + window.height, c0 : c0 + window.width]
+    
+                    crop_reader = base_crop_src
+                    depth_src = None
+                else:
+                    depth_path = data
+                    depth_src = rasterio.open(depth_path)
+                    crop_reader = WarpedVRT(
+                        base_crop_src,
+                        crs=depth_src.crs,
+                        transform=depth_src.transform,
+                        width=depth_src.width,
+                        height=depth_src.height,
+                        resampling=Resampling.nearest,
+                    )
+                    crop_profile = crop_reader.profile.copy()
+                    windows = list(depth_src.block_windows(1))
+    
+                    def read_depth(window, src=depth_src):
+                        return src.read(1, window=window, out_dtype="float32")
+            else:
+                depth_path = item
+                label = sanitize_label(
+                    os.path.splitext(os.path.basename(depth_path))[0]
                 )
-                continue
-
-            flooded_pixels = int(mask.sum())
-            flooded_acres = flooded_pixels * pixel_area_acres
-            avg_damage = (
-                damage_ratio[mask].sum() * value * pixel_area_acres
+                meta = flood_metadata.get(label, {})
+                return_period = meta.get("return_period", 100)
+                flood_month = meta.get("flood_month", 6)
+    
+                depth_src = rasterio.open(depth_path)
+                crop_reader = WarpedVRT(
+                    base_crop_src,
+                    crs=depth_src.crs,
+                    transform=depth_src.transform,
+                    width=depth_src.width,
+                    height=depth_src.height,
+                    resampling=Resampling.nearest,
+                )
+                crop_profile = crop_reader.profile.copy()
+                windows = list(depth_src.block_windows(1))
+    
+                def read_depth(window, src=depth_src):
+                    return src.read(1, window=window, out_dtype="float32")
+    
+            crs = crop_profile["crs"]
+            unit_factor = 1.0
+            if crs and crs.is_projected:
+                try:
+                    lf = crs.linear_units_factor
+                    unit_factor = lf[1] if isinstance(lf, tuple) else float(lf)
+                except Exception:
+                    pass
+            pixel_area_acres = (
+                abs(crop_profile["transform"][0] * crop_profile["transform"][4])
+                * (unit_factor ** 2)
+                * SQ_METERS_TO_ACRES
             )
-            ead = avg_damage * (1 / return_period)
-            damage_arr[mask] = damage_ratio[mask]
-
-            rows.append(
-                {
-                    "CropCode": code,
-                    "CropName": name,
-                    "FloodedPixels": flooded_pixels,
-                    "FloodedAcres": flooded_acres,
-                    "ValuePerAcre": value,
-                    "DollarsLost": round(avg_damage, 2),
-                    "EAD": round(ead, 2),
-                    "ReturnPeriod": return_period,
-                    "FloodMonth": flood_month,
-                    "GrowingSeason": props["GrowingSeason"],
-                }
-            )
-
-        df = pd.DataFrame(rows)
-        summaries[label] = df
-
-        np.less_equal(damage_arr, 0, out=mask)
-        damage_crop_arr = aligned_crop.copy()
-        damage_crop_arr[mask] = 0
-
-        ratio_profile = crop_profile.copy()
-        ratio_profile["dtype"] = "float32"
-        ratio_path = os.path.join(output_dir, f"damage_{label}.tif")
-        with rasterio.open(ratio_path, "w", **ratio_profile) as dst:
-            dst.write(damage_arr, 1)
-
-        crop_profile_out = crop_profile.copy()
-        crop_profile_out["dtype"] = aligned_crop.dtype
-        crop_path = os.path.join(output_dir, f"damage_crops_{label}.tif")
-        with rasterio.open(crop_path, "w", **crop_profile_out) as dst:
-            dst.write(damage_crop_arr, 1)
-
-        damage_raster_paths[label] = {"ratio": ratio_path, "crop": crop_path}
-
+    
+            ratio_profile = crop_profile.copy()
+            ratio_profile.update({"driver": "GTiff", "dtype": "float32"})
+            ratio_path = os.path.join(output_dir, f"damage_{label}.tif")
+            crop_profile_out = crop_profile.copy()
+            crop_profile_out.update({"driver": "GTiff", "dtype": crop_reader.dtypes[0]})
+            crop_path_out = os.path.join(output_dir, f"damage_crops_{label}.tif")
+    
+            in_season_codes = {
+                code: props
+                for code, props in crop_inputs.items()
+                if flood_month in props["GrowingSeason"]
+            }
+            stats = {code: {"pixels": 0, "sum_ratio": 0.0} for code in in_season_codes}
+            out_of_season_codes = [
+                code for code in crop_inputs if code not in in_season_codes
+            ]
+    
+            with rasterio.open(ratio_path, "w", **ratio_profile) as ratio_dst, rasterio.open(
+                crop_path_out, "w", **crop_profile_out
+            ) as crop_dst:
+                for _, window in windows:
+                    crop_block = crop_reader.read(1, window=window)
+                    depth_block = read_depth(window).astype("float32")
+                    damage_ratio = depth_block / FULL_DAMAGE_DEPTH_FT
+                    np.clip(damage_ratio, 0, 1, out=damage_ratio)
+                    if out_of_season_codes:
+                        oos_mask = np.isin(crop_block, out_of_season_codes)
+                        damage_ratio[oos_mask] = 0
+                    damage_ratio[crop_block == 0] = 0
+    
+                    for code in in_season_codes:
+                        mask = crop_block == code
+                        if mask.any():
+                            stats[code]["pixels"] += int(mask.sum())
+                            stats[code]["sum_ratio"] += damage_ratio[mask].sum()
+    
+                    damage_crop_block = crop_block.copy()
+                    damage_crop_block[damage_ratio <= 0] = 0
+    
+                    ratio_dst.write(damage_ratio.astype("float32"), 1, window=window)
+                    crop_dst.write(damage_crop_block, 1, window=window)
+    
+            rows = []
+            for code, props in crop_inputs.items():
+                value = props["Value"]
+                name = props.get("Name", CROP_DEFINITIONS.get(code, (str(code), 0))[0])
+                if code in in_season_codes:
+                    pixels = stats[code]["pixels"]
+                    flooded_acres = pixels * pixel_area_acres
+                    avg_damage = stats[code]["sum_ratio"] * value * pixel_area_acres
+                    ead = avg_damage * (1 / return_period)
+                    if pixels == 0:
+                        diagnostics.append({"Flood": label, "CropCode": code, "Issue": "Not present"})
+                    rows.append(
+                        {
+                            "CropCode": code,
+                            "CropName": name,
+                            "FloodedPixels": pixels,
+                            "FloodedAcres": flooded_acres,
+                            "ValuePerAcre": value,
+                            "DollarsLost": round(avg_damage, 2),
+                            "EAD": round(ead, 2),
+                            "ReturnPeriod": return_period,
+                            "FloodMonth": flood_month,
+                            "GrowingSeason": props["GrowingSeason"],
+                        }
+                    )
+                else:
+                    diagnostics.append({"Flood": label, "CropCode": code, "Issue": "Out of season"})
+                    rows.append(
+                        {
+                            "CropCode": code,
+                            "CropName": name,
+                            "FloodedPixels": 0,
+                            "FloodedAcres": 0.0,
+                            "ValuePerAcre": value,
+                            "DollarsLost": 0.0,
+                            "EAD": 0.0,
+                            "ReturnPeriod": return_period,
+                            "FloodMonth": flood_month,
+                            "GrowingSeason": props["GrowingSeason"],
+                        }
+                    )
+    
+            df = pd.DataFrame(rows)
+            summaries[label] = df
+            damage_raster_paths[label] = {"ratio": ratio_path, "crop": crop_path_out}
+    
+            if crop_reader is not base_crop_src:
+                crop_reader.close()
+            if depth_src:
+                depth_src.close()
+    
     # Optional trapezoidal integration
     trapezoid_rows = []
     if len(summaries) > 1:
