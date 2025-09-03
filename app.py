@@ -283,7 +283,8 @@ if mode == "Direct Damages":
                     """
                 - **CropCode**: CropScape numerical code.
                 - **CropName**: Descriptive crop type.
-                - **FloodedAcres**: Area affected (1 pixel ≈ 0.222 acres).
+                - **FloodedPixels**: Number of inundated pixels.
+                - **FloodedAcres**: Area affected (pixels × pixel area; 1 pixel ≈ 0.222 acres).
                 - **ValuePerAcre**: Input value per acre for the crop.
                 - **DollarsLost**: Total crop damage.
                 - **EAD**: Expected Annual Damage = DollarsLost ÷ ReturnPeriod.

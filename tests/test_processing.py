@@ -83,6 +83,7 @@ def test_process_flood_damage_generates_outputs(tmp_path):
     assert "floodA" in summaries
     df = summaries["floodA"]
     assert len(df) == 2
+    assert "FloodedPixels" in df.columns
     assert diagnostics == []
     assert rasters["floodA"]["ratio"].shape == crop.shape
     assert set(np.unique(rasters["floodA"]["crop"])) == {1, 2}
@@ -143,6 +144,7 @@ def test_process_flood_damage_reports_all_crops(tmp_path):
     assert set(df["CropCode"]) == {1, 2}
     row2 = df[df["CropCode"] == 2].iloc[0]
     assert row2["FloodedAcres"] == 0
+    assert row2["FloodedPixels"] == 0
     assert row2["DollarsLost"] == 0
     assert any(d["CropCode"] == 2 for d in diagnostics)
 
@@ -241,8 +243,10 @@ def test_pixel_to_acre_conversion(tmp_path):
 
     df = summaries["floodA"]
     expected = (pixel_size * pixel_size) / 4046.8564224
+    flooded_pixels = df[df["CropCode"] == 1]["FloodedPixels"].iloc[0]
     flooded_acres = df[df["CropCode"] == 1]["FloodedAcres"].iloc[0]
-    assert flooded_acres == pytest.approx(expected, rel=1e-3)
+    assert flooded_pixels == 1
+    assert flooded_acres == pytest.approx(flooded_pixels * expected, rel=1e-3)
 
 
 def test_process_flood_damage_excludes_zero_code(tmp_path):

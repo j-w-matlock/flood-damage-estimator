@@ -15,6 +15,7 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
     import numpy as np
 
     FULL_DAMAGE_DEPTH_FT = 6.0
+    SQ_METERS_TO_ACRES = 0.000247105
 
     def process_flood_damage(
         crop_raster,
@@ -53,6 +54,7 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
         cell_x = desc.meanCellWidth
         cell_y = desc.meanCellHeight
         lower_left = desc.extent.lowerLeft
+        pixel_area_acres = abs(cell_x * cell_y) * SQ_METERS_TO_ACRES
 
         summaries, diagnostics = {}, []
 
@@ -86,22 +88,27 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
                     diagnostics.append(
                         {"Flood": label, "CropCode": code, "Issue": issue}
                     )
-                rows.append(
-                    {
-                        "CropCode": code,
-                        "CropName": name,
-                        "FloodedAcres": 0,
-                        "ValuePerAcre": value,
-                        "DollarsLost": 0.0,
-                        "EAD": 0.0,
-                        "ReturnPeriod": return_period,
-                        "FloodMonth": flood_month,
-                        "GrowingSeason": props["GrowingSeason"],
-                    }
-                )
-                continue
+                    rows.append(
+                        {
+                            "CropCode": code,
+                            "CropName": name,
+                            "FloodedPixels": 0,
+                            "FloodedAcres": 0,
+                            "ValuePerAcre": value,
+                            "DollarsLost": 0.0,
+                            "EAD": 0.0,
+                            "ReturnPeriod": return_period,
+                            "FloodMonth": flood_month,
+                            "GrowingSeason": props["GrowingSeason"],
+                        }
+                    )
+                    continue
 
-                crop_damage = value * damage_ratio * mask
+                # The following block executes only when the crop is present and
+                # in season
+                flooded_pixels = int(mask.sum())
+                flooded_acres = flooded_pixels * pixel_area_acres
+                crop_damage = value * damage_ratio * mask * pixel_area_acres
                 avg_damage = crop_damage.sum()
                 ead = avg_damage * (1 / return_period)
                 damage_arr = np.where(mask, damage_ratio, damage_arr)
@@ -110,7 +117,8 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
                     {
                         "CropCode": code,
                         "CropName": name,
-                        "FloodedAcres": int(mask.sum()),
+                        "FloodedPixels": flooded_pixels,
+                        "FloodedAcres": flooded_acres,
                         "ValuePerAcre": value,
                         "DollarsLost": round(float(avg_damage), 2),
                         "EAD": round(float(ead), 2),
