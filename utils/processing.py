@@ -182,7 +182,7 @@ def process_flood_damage(
             flood_month = meta.get("flood_month", 6)
 
             if isinstance(data, np.ndarray):
-                depth_arr = data
+                depth_arr = data.astype("float32")
                 aligned_crop = base_crop_arr
                 crop_profile = base_crop_profile
             else:
@@ -192,8 +192,8 @@ def process_flood_damage(
                     depth_arr = depth_src.read(
                         1,
                         out_shape=(aligned_crop.shape),
-                        resampling=Resampling.bilinear,
-                    )
+                        resampling=Resampling.nearest,
+                    ).astype("float32")
         else:
             depth_path = item
             label = os.path.splitext(os.path.basename(depth_path))[0]
@@ -205,8 +205,10 @@ def process_flood_damage(
 
             with rasterio.open(depth_path) as depth_src:
                 depth_arr = depth_src.read(
-                    1, out_shape=(aligned_crop.shape), resampling=Resampling.bilinear
-                )
+                    1,
+                    out_shape=(aligned_crop.shape),
+                    resampling=Resampling.nearest,
+                ).astype("float32")
 
         damage_arr = np.zeros_like(aligned_crop, dtype=float)
         rows = []
