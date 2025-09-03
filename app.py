@@ -8,7 +8,11 @@ from utils.processing import (
     run_monte_carlo,
     constant_depth_array,
 )
-from utils.crop_definitions import CROP_DEFINITIONS
+from utils.crop_definitions import (
+    CROP_DEFINITIONS,
+    CROP_GROWING_SEASONS,
+    DEFAULT_GROWING_SEASON,
+)
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import Counter
@@ -142,35 +146,42 @@ if crop_file:
     codes = [c for c, _ in counts.most_common() if c != 0]
 
     st.markdown("### 🌱 Crop Values and Growing Seasons")
-    for code in codes:
-        # Use the crop code itself as a fallback name so undefined codes are
-        # clearly identifiable in the UI instead of appearing blank.
-        default_name, default_val = CROP_DEFINITIONS.get(code, (str(code), 0))
-        name = st.text_input(
-            f"Crop {code} – Name",
-            value=default_name,
-            key=f"name_{code}",
-            help="Descriptive name for this crop code",
-        )
-        # ``default_val`` is cast to ``float`` above, so ``step`` must also be a
-        # float. Use a small increment and explicit format so precise dollar
-        # amounts (e.g., 1193.19) are preserved instead of being rounded.
-        val = st.number_input(
-            f"{name} – $/Acre",
-            value=float(default_val or 0),
-            step=0.01,
-            format="%.2f",
-            key=f"val_{code}",
-            help="Enter average crop value per acre for this crop",
-        )
-        season = st.multiselect(
-            f"{name} – Growing Months",
-            list(range(1, 13)),
-            default=list(range(4, 10)),
-            key=f"season_{code}",
-            help="Choose the active growing months when this crop is vulnerable to flooding",
-        )
-        crop_inputs[code] = {"Name": name, "Value": val, "GrowingSeason": season}
+    st.caption(
+        "Default values and calendars are provided. Expand below to adjust assumptions as needed."
+    )
+    with st.expander("Review or customize crop assumptions", expanded=False):
+        for code in codes:
+            # Use the crop code itself as a fallback name so undefined codes are
+            # clearly identifiable in the UI instead of appearing blank.
+            default_name, default_val = CROP_DEFINITIONS.get(code, (str(code), 0))
+            default_season = CROP_GROWING_SEASONS.get(
+                code, DEFAULT_GROWING_SEASON
+            )
+            name = st.text_input(
+                f"Crop {code} – Name",
+                value=default_name,
+                key=f"name_{code}",
+                help="Descriptive name for this crop code",
+            )
+            # ``default_val`` is cast to ``float`` above, so ``step`` must also be a
+            # float. Use a small increment and explicit format so precise dollar
+            # amounts (e.g., 1193.19) are preserved instead of being rounded.
+            val = st.number_input(
+                f"{name} – $/Acre",
+                value=float(default_val or 0),
+                step=0.01,
+                format="%.2f",
+                key=f"val_{code}",
+                help="Enter average crop value per acre for this crop",
+            )
+            season = st.multiselect(
+                f"{name} – Growing Months",
+                list(range(1, 13)),
+                default=default_season,
+                key=f"season_{code}",
+                help="Months when this crop is vulnerable to flooding",
+            )
+            crop_inputs[code] = {"Name": name, "Value": val, "GrowingSeason": season}
     st.session_state.crop_inputs = crop_inputs
 
 # Process flood rasters or uniform depth

@@ -347,6 +347,24 @@ def test_drawn_features_to_depth_array(tmp_path):
     assert arr.sum() > 0
 
 
+def test_process_flood_damage_uses_default_season(tmp_path):
+    crop = np.array([[1]], dtype=np.uint16)
+    crop_path = tmp_path / "crop.tif"
+    create_raster(crop_path, crop, "EPSG:4326", from_origin(0, 1, 1, 1))
+
+    depth_arr = np.full((1, 1), 6.0, dtype=float)
+    flood_metadata = {"floodA": {"return_period": 10, "flood_month": 1}}
+
+    out_dir = tmp_path / "out"
+    _, summaries, diagnostics, _ = process_flood_damage(
+        str(crop_path), [("floodA", depth_arr)], str(out_dir), 100, None, flood_metadata
+    )
+
+    df = summaries["floodA"]
+    assert df.iloc[0]["EAD"] == 0
+    assert any(d["Issue"] == "Out of season" for d in diagnostics)
+
+
 def test_run_monte_carlo_month_uncertainty(tmp_path):
     crop = np.array([[1]], dtype=np.uint16)
     crop_path = tmp_path / "crop.tif"

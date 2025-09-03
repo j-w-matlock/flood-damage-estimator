@@ -2,6 +2,8 @@
 
 This Streamlit app estimates agricultural flood damages from cropland and flood depth rasters.
 
+Default crop values and typical growing seasons are built in, allowing the
+model to run with only a CropScape raster and one or more flood depth grids.
 The interface now reports **all** crop codes present in the uploaded raster and
 displays bar chart visualizations of damages for quick comparison between crop
 types.
@@ -16,6 +18,10 @@ types.
    ```bash
    streamlit run app.py
    ```
+
+The app automatically populates crop values and growing seasons using USDA
+defaults. After uploading your data you can expand the **Crop Values and
+Growing Seasons** section to review or adjust those assumptions.
 
 ## Providing Raster Data
 
