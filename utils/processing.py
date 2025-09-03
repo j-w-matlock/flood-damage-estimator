@@ -232,10 +232,12 @@ def process_flood_damage(
                     resampling=Resampling.nearest,
                 ).astype("float32")
 
-        damage_arr = np.zeros_like(aligned_crop, dtype=float)
+        damage_arr = np.zeros_like(aligned_crop, dtype=np.float32)
         rows = []
 
-        damage_ratio = np.clip(depth_arr / FULL_DAMAGE_DEPTH_FT, 0, 1)
+        damage_ratio = depth_arr
+        damage_ratio /= FULL_DAMAGE_DEPTH_FT
+        np.clip(damage_ratio, 0, 1, out=damage_ratio)
 
         crs = crop_profile["crs"]
         unit_factor = 1.0
@@ -251,11 +253,12 @@ def process_flood_damage(
             * SQ_METERS_TO_ACRES
         )
 
+        mask = np.zeros_like(aligned_crop, dtype=bool)
         for code, props in crop_inputs.items():
             value = props["Value"]
             name = props.get("Name", CROP_DEFINITIONS.get(code, (str(code), 0))[0])
 
-            mask = aligned_crop == code
+            np.equal(aligned_crop, code, out=mask)
             out_of_season = flood_month not in props["GrowingSeason"]
             not_present = not np.any(mask)
 
@@ -282,10 +285,11 @@ def process_flood_damage(
 
             flooded_pixels = int(mask.sum())
             flooded_acres = flooded_pixels * pixel_area_acres
-            crop_damage = value * damage_ratio * mask * pixel_area_acres
-            avg_damage = crop_damage.sum()
+            avg_damage = (
+                damage_ratio[mask].sum() * value * pixel_area_acres
+            )
             ead = avg_damage * (1 / return_period)
-            damage_arr = np.where(mask, damage_ratio, damage_arr)
+            damage_arr[mask] = damage_ratio[mask]
 
             rows.append(
                 {
@@ -305,10 +309,9 @@ def process_flood_damage(
         df = pd.DataFrame(rows)
         summaries[label] = df
 
-        damage_arr = damage_arr.astype(np.float32)
-        damage_crop_arr = np.where(damage_arr > 0, aligned_crop, 0).astype(
-            aligned_crop.dtype
-        )
+        np.less_equal(damage_arr, 0, out=mask)
+        damage_crop_arr = aligned_crop.copy()
+        damage_crop_arr[mask] = 0
 
         ratio_profile = crop_profile.copy()
         ratio_profile["dtype"] = "float32"
