@@ -50,9 +50,10 @@ def test_align_crop_to_depth_crs_and_shape(tmp_path):
     create_raster(depth_path, depth_arr, "EPSG:3857", depth_transform)
 
     aligned, profile = align_crop_to_depth(str(crop_path), str(depth_path))
-
-    assert aligned.shape == crop_arr.shape
+    
+    assert aligned.shape == depth_arr.shape
     assert str(profile["crs"]) == "EPSG:3857"
+    assert profile["transform"] == depth_transform
 
 
 def test_process_flood_damage_generates_outputs(tmp_path):
