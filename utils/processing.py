@@ -23,18 +23,18 @@ FULL_DAMAGE_DEPTH_FT = 6.0
 # Conversion factor from square meters to acres
 SQ_METERS_TO_ACRES = 0.000247105
 
-
+# Characters disallowed in Excel sheet names: []:*?/\
 INVALID_SHEET_CHARS = r"[\[\]:\*\?/\\]"
 
 
 def sanitize_label(label, max_length=31):
     r"""Return a filesystem and Excel-safe version of *label*.
 
-    Excel sheet names cannot contain ``[]:*?/\`` and must be <=31 characters.
-    This helper replaces forbidden characters with underscores and truncates
-    the result so that downstream file writes do not crash.
+    Excel sheet names cannot contain the characters []:*?/\ and must be
+    <=31 characters. This helper replaces forbidden characters with
+    underscores and truncates the result so that downstream file writes do
+    not crash.
     """
-
     cleaned = re.sub(INVALID_SHEET_CHARS, "_", str(label))
     if len(cleaned) > max_length:
         cleaned = cleaned[:max_length]
