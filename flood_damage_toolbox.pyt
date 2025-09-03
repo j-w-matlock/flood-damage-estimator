@@ -54,7 +54,9 @@ except Exception:  # pragma: no cover - ArcGIS Pro may lack rasterio
         cell_x = desc.meanCellWidth
         cell_y = desc.meanCellHeight
         lower_left = desc.extent.lowerLeft
-        pixel_area_acres = abs(cell_x * cell_y) * SQ_METERS_TO_ACRES
+        sr = desc.spatialReference
+        unit_factor = sr.metersPerUnit if sr.type != "Geographic" else 1.0
+        pixel_area_acres = abs(cell_x * cell_y) * (unit_factor ** 2) * SQ_METERS_TO_ACRES
 
         summaries, diagnostics = {}, []
 

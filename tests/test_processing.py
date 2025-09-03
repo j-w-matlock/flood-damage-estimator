@@ -249,6 +249,32 @@ def test_pixel_to_acre_conversion(tmp_path):
     assert flooded_acres == pytest.approx(flooded_pixels * expected, rel=1e-3)
 
 
+def test_pixel_to_acre_conversion_feet(tmp_path):
+    crop = np.array([[1]], dtype=np.uint16)
+    pixel_size_ft = 98.4252  # 30 meters expressed in US survey feet
+    crop_path = tmp_path / "crop.tif"
+    create_raster(
+        crop_path, crop, "EPSG:2277", from_origin(0, pixel_size_ft, pixel_size_ft, pixel_size_ft)
+    )
+
+    depth_arr = np.full((1, 1), 6.0, dtype=float)
+    crop_inputs = {1: {"Value": 10, "GrowingSeason": [6]}}
+    flood_metadata = {"floodA": {"return_period": 10, "flood_month": 6}}
+
+    out_dir = tmp_path / "out"
+    _, summaries, _, _ = process_flood_damage(
+        str(crop_path), [("floodA", depth_arr)], str(out_dir), 100, crop_inputs, flood_metadata
+    )
+
+    df = summaries["floodA"]
+    unit_factor = rasterio.crs.CRS.from_epsg(2277).linear_units_factor[1]
+    expected = ((pixel_size_ft * unit_factor) ** 2) / 4046.8564224
+    flooded_pixels = df[df["CropCode"] == 1]["FloodedPixels"].iloc[0]
+    flooded_acres = df[df["CropCode"] == 1]["FloodedAcres"].iloc[0]
+    assert flooded_pixels == 1
+    assert flooded_acres == pytest.approx(flooded_pixels * expected, rel=1e-3)
+
+
 def test_process_flood_damage_excludes_zero_code(tmp_path):
     crop = np.array([[0, 1], [0, 1]], dtype=np.uint16)
     crop_path = tmp_path / "crop.tif"
