@@ -35,22 +35,19 @@ for key in [
     "label_map",
     "label_metadata",
     "crop_inputs",
-    "temp_files",
     "temp_dir",
+    "upload_dir",
 ]:
     if key not in st.session_state:
-        if key == "temp_files":
-            st.session_state[key] = []
-        elif key == "crop_inputs":
+        if key == "crop_inputs":
             st.session_state[key] = {}
         else:
             st.session_state[key] = None
 
-    files = st.session_state.get("temp_files") or []
-    for path in files:
-        if path and os.path.exists(path):
-            os.remove(path)
-    st.session_state["temp_files"] = []
+upload_dir = st.session_state.get("upload_dir")
+if upload_dir:
+    upload_dir.cleanup()
+st.session_state["upload_dir"] = tempfile.TemporaryDirectory()
 
 
 def cleanup_temp_dir():
@@ -61,16 +58,23 @@ def cleanup_temp_dir():
 
 
 def save_upload(uploaded, suffix):
-    path = tempfile.NamedTemporaryFile(delete=False, suffix=suffix).name
-    with open(path, "wb") as out:
-        out.write(uploaded.read())
-    st.session_state.temp_files.append(path)
-    return path
+    upload_dir = st.session_state.get("upload_dir")
+    if upload_dir is None:
+        upload_dir = tempfile.TemporaryDirectory()
+        st.session_state["upload_dir"] = upload_dir
+    with tempfile.NamedTemporaryFile(
+        delete=False, suffix=suffix, dir=upload_dir.name
+    ) as tmp:
+        tmp.write(uploaded.read())
+        return tmp.name
 
 
 # Reset
 if st.sidebar.button("🔁 Reset App"):
     cleanup_temp_dir()
+    upload_dir = st.session_state.get("upload_dir")
+    if upload_dir:
+        upload_dir.cleanup()
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
