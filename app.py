@@ -305,7 +305,8 @@ if mode == "Direct Damages":
             bar_path = os.path.join(
                 st.session_state.temp_dir.name, f"bar_{label}.png"
             )
-            fig_bar.savefig(bar_path)
+            # Ensure the entire bar chart (including labels) is saved without cropping
+            fig_bar.savefig(bar_path, bbox_inches="tight")
             plt.close(fig_bar)
             image_paths.setdefault(label, {})["bar"] = bar_path
 
@@ -341,7 +342,8 @@ if mode == "Direct Damages":
             raster_path = os.path.join(
                 st.session_state.temp_dir.name, f"raster_{label}.png"
             )
-            fig.savefig(raster_path)
+            # Preserve full raster image and legend when exporting
+            fig.savefig(raster_path, bbox_inches="tight")
             plt.close(fig)
             image_paths.setdefault(label, {})["raster"] = raster_path
 
