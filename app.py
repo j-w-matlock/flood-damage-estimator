@@ -7,6 +7,7 @@ from utils.processing import (
     process_flood_damage,
     run_monte_carlo,
     constant_depth_array,
+    sanitize_label,
 )
 from utils.crop_definitions import (
     CROP_DEFINITIONS,
@@ -192,7 +193,7 @@ if depth_files or use_uniform_depth:
     if depth_files:
         for i, f in enumerate(depth_files):
             path = save_upload(f, ".tif")
-            label = os.path.splitext(os.path.basename(f.name))[0]
+            label = sanitize_label(os.path.splitext(os.path.basename(f.name))[0])
             depth_inputs.append((label, path))
             rp = st.number_input(
                 f"Return Period: {f.name}",
@@ -230,7 +231,7 @@ if depth_files or use_uniform_depth:
         )
 
         depth_arr = constant_depth_array(st.session_state.crop_path, uniform_depth_ft)
-        label = f"uniform_{uniform_depth_ft}ft"
+        label = sanitize_label(f"uniform_{uniform_depth_ft}ft")
         depth_inputs.append((label, depth_arr))
         label_to_filename[label] = label
         label_to_metadata[label] = {"return_period": rp, "flood_month": mo}

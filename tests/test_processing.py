@@ -12,6 +12,7 @@ import geopandas as gpd
 import zipfile
 import fiona
 import pytest
+import openpyxl
 
 from utils.processing import (
     align_crop_to_depth,
@@ -20,6 +21,7 @@ from utils.processing import (
     constant_depth_array,
     drawn_features_to_depth_array,
     run_monte_carlo,
+    sanitize_label,
 )
 from utils.crop_definitions import CROP_DEFINITIONS
 
@@ -117,6 +119,28 @@ def test_process_flood_damage_with_labeled_path(tmp_path):
 
     assert (out_dir / "damage_depthA.tif").exists()
     assert "depthA" in summaries
+
+
+def test_process_flood_damage_sanitizes_labels(tmp_path):
+    crop = np.array([[1]], dtype=np.uint16)
+    crop_path = tmp_path / "crop.tif"
+    create_raster(crop_path, crop, "EPSG:4326", from_origin(0, 1, 1, 1))
+
+    depth_arr = np.full((1, 1), 6.0, dtype=float)
+    bad_label = "very:bad*depth?name/with\\chars[long]"
+    out_dir = tmp_path / "out"
+    excel_path, summaries, diagnostics, rasters = process_flood_damage(
+        str(crop_path), [(bad_label, depth_arr)], str(out_dir), 100, None, {}
+    )
+
+    safe_label = sanitize_label(bad_label)
+    assert safe_label in summaries
+    assert (out_dir / f"damage_{safe_label}.tif").exists()
+    wb = openpyxl.load_workbook(excel_path)
+    assert safe_label in wb.sheetnames
+    assert len(safe_label) <= 31
+    for ch in "[]:*?/\\":
+        assert ch not in safe_label
 
 
 def test_process_flood_damage_reports_all_crops(tmp_path):
