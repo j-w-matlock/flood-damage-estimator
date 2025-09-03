@@ -31,7 +31,7 @@ for key in [
     "diagnostics",
     "crop_path",
     "depth_inputs",
-    "damage_rasters",
+    "damage_raster_paths",
     "label_map",
     "label_metadata",
     "crop_inputs",
@@ -253,7 +253,7 @@ if mode == "Direct Damages":
             st.session_state.temp_dir = tempfile.TemporaryDirectory()
             with st.spinner("🔄 Processing flood damages..."):
                 try:
-                    result_path, summaries, diagnostics, damage_rasters = (
+                    result_path, summaries, diagnostics, damage_raster_paths = (
                         process_flood_damage(
                             st.session_state.crop_path,
                             st.session_state.depth_inputs,
@@ -266,12 +266,12 @@ if mode == "Direct Damages":
                     st.session_state.result_path = result_path
                     st.session_state.summaries = summaries
                     st.session_state.diagnostics = diagnostics
-                    st.session_state.damage_rasters = damage_rasters
+                    st.session_state.damage_raster_paths = damage_raster_paths
                     st.success("✅ Direct damage analysis complete.")
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
 
-    if st.session_state.result_path and "damage_rasters" in st.session_state:
+    if st.session_state.result_path and "damage_raster_paths" in st.session_state:
         st.markdown("---")
         st.header("📈 Results & Visualizations")
 
@@ -315,9 +315,10 @@ if mode == "Direct Damages":
             st.subheader("🛠️ Diagnostics")
             st.dataframe(pd.DataFrame(st.session_state.diagnostics))
 
-        for label, arrs in st.session_state.damage_rasters.items():
+        for label, paths in st.session_state.damage_raster_paths.items():
             st.subheader(f"🗺️ Damage Raster – {label}")
-            crop_arr = arrs.get("crop") if isinstance(arrs, dict) else arrs
+            with rasterio.open(paths.get("crop")) as src:
+                crop_arr = src.read(1)
             codes = [c for c in np.unique(crop_arr) if c != 0]
             name_map = {
                 c: st.session_state.crop_inputs.get(c, {}).get(
@@ -380,7 +381,7 @@ elif mode == "Monte Carlo Simulation":
             st.session_state.temp_dir = tempfile.TemporaryDirectory()
             with st.spinner("🔬 Running Monte Carlo..."):
                 try:
-                    result_path, summaries, diagnostics, damage_rasters = (
+                    result_path, summaries, diagnostics, damage_raster_paths = (
                         process_flood_damage(
                             st.session_state.crop_path,
                             st.session_state.depth_inputs,
