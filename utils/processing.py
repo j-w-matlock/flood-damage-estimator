@@ -235,6 +235,7 @@ def process_flood_damage(
                     {
                         "CropCode": code,
                         "CropName": name,
+                        "FloodedPixels": 0,
                         "FloodedAcres": 0.0,
                         "ValuePerAcre": value,
                         "DollarsLost": 0.0,
@@ -246,7 +247,8 @@ def process_flood_damage(
                 )
                 continue
 
-            flooded_acres = mask.sum() * pixel_area_acres
+            flooded_pixels = int(mask.sum())
+            flooded_acres = flooded_pixels * pixel_area_acres
             crop_damage = value * damage_ratio * mask * pixel_area_acres
             avg_damage = crop_damage.sum()
             ead = avg_damage * (1 / return_period)
@@ -256,6 +258,7 @@ def process_flood_damage(
                 {
                     "CropCode": code,
                     "CropName": name,
+                    "FloodedPixels": flooded_pixels,
                     "FloodedAcres": flooded_acres,
                     "ValuePerAcre": value,
                     "DollarsLost": round(avg_damage, 2),
