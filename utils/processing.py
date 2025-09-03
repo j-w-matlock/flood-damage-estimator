@@ -217,7 +217,13 @@ def process_flood_damage(
         damage_ratio = np.clip(depth_arr / FULL_DAMAGE_DEPTH_FT, 0, 1)
 
         crs = crop_profile["crs"]
-        unit_factor = crs.linear_units_factor[1] if crs.is_projected else 1.0
+        unit_factor = 1.0
+        if crs and crs.is_projected:
+            try:
+                lf = crs.linear_units_factor
+                unit_factor = lf[1] if isinstance(lf, tuple) else float(lf)
+            except Exception:
+                pass
         pixel_area_acres = (
             abs(crop_profile["transform"][0] * crop_profile["transform"][4])
             * (unit_factor ** 2)
