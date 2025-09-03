@@ -144,3 +144,14 @@ CROP_DEFINITIONS = {
     254: ("Dbl Crop Barley/Soybeans", 509.145),
 }
 
+# Default growing season is April through September. These values provide a
+# reasonable assumption when users do not specify crop calendars explicitly.
+DEFAULT_GROWING_SEASON = list(range(4, 10))
+
+# Map each crop code to the default growing season so the application can run
+# with only a CropScape raster and flood depth grid. Users may still override
+# these months in the interface.
+CROP_GROWING_SEASONS = {
+    code: DEFAULT_GROWING_SEASON for code in CROP_DEFINITIONS
+}
+

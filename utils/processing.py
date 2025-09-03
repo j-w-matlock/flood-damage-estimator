@@ -10,7 +10,11 @@ from shapely.geometry import shape
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 
-from .crop_definitions import CROP_DEFINITIONS
+from .crop_definitions import (
+    CROP_DEFINITIONS,
+    CROP_GROWING_SEASONS,
+    DEFAULT_GROWING_SEASON,
+)
 
 # Depth in feet assumed to result in 100% crop damage
 FULL_DAMAGE_DEPTH_FT = 6.0
@@ -143,7 +147,9 @@ def process_flood_damage(
             code: {
                 "Name": CROP_DEFINITIONS.get(code, (str(code), 0))[0],
                 "Value": CROP_DEFINITIONS.get(code, (str(code), 0))[1],
-                "GrowingSeason": list(range(1, 13)),
+                "GrowingSeason": CROP_GROWING_SEASONS.get(
+                    code, DEFAULT_GROWING_SEASON
+                ),
             }
             for code in crop_codes_present
         }
@@ -153,13 +159,19 @@ def process_flood_damage(
             default_name, default_value = CROP_DEFINITIONS.get(code, (str(code), 0))
             props.setdefault("Name", default_name)
             props.setdefault("Value", default_value)
+            props.setdefault(
+                "GrowingSeason",
+                CROP_GROWING_SEASONS.get(code, DEFAULT_GROWING_SEASON),
+            )
         for code in crop_codes_present:
             if code not in crop_inputs:
                 name, value = CROP_DEFINITIONS.get(code, (str(code), 0))
                 crop_inputs[code] = {
                     "Name": name,
                     "Value": value,
-                    "GrowingSeason": list(range(1, 13)),
+                    "GrowingSeason": CROP_GROWING_SEASONS.get(
+                        code, DEFAULT_GROWING_SEASON
+                    ),
                 }
 
     for item in depth_inputs:
