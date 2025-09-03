@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 from rasterio.enums import Resampling
-from rasterio.warp import calculate_default_transform, reproject
+from rasterio.warp import reproject
 from rasterio import features
 import geopandas as gpd
 from shapely.geometry import shape
@@ -26,9 +26,10 @@ SQ_METERS_TO_ACRES = 0.000247105
 def align_crop_to_depth(crop_path, depth_path):
     with rasterio.open(depth_path) as depth_src, rasterio.open(crop_path) as crop_src:
         dst_crs = depth_src.crs
-        dst_transform, width, height = calculate_default_transform(
-            crop_src.crs, dst_crs, crop_src.width, crop_src.height, *crop_src.bounds
-        )
+        dst_transform = depth_src.transform
+        width = depth_src.width
+        height = depth_src.height
+
         profile = crop_src.profile.copy()
         profile.update(
             {
