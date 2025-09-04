@@ -195,6 +195,26 @@ def test_process_flood_damage_reports_all_crops(tmp_path):
     assert any(d["CropCode"] == 2 for d in diagnostics)
 
 
+def test_process_flood_damage_ignores_zero_depth(tmp_path):
+    crop = np.array([[1, 1], [1, 1]], dtype=np.uint16)
+    crop_path = tmp_path / "crop.tif"
+    create_raster(crop_path, crop, "EPSG:4326", from_origin(0, 2, 1, 1))
+
+    depth_arr = np.array([[0.0, 6.0], [0.0, 0.0]], dtype=float)
+    crop_inputs = {1: {"Value": 10, "GrowingSeason": [6]}}
+    flood_metadata = {"floodA": {"return_period": 10, "flood_month": 6}}
+
+    out_dir = tmp_path / "out"
+    _, summaries, diagnostics, _ = process_flood_damage(
+        str(crop_path), [("floodA", depth_arr)], str(out_dir), 100, crop_inputs, flood_metadata
+    )
+
+    df = summaries["floodA"]
+    flooded_pixels = df[df["CropCode"] == 1]["FloodedPixels"].iloc[0]
+    assert flooded_pixels == 1
+    assert diagnostics == []
+
+
 def test_process_flood_damage_includes_names(tmp_path):
     crop = np.array([[1]], dtype=np.uint16)
     crop_path = tmp_path / "crop.tif"
