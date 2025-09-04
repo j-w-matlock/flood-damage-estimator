@@ -330,7 +330,7 @@ if mode == "Direct Damages":
                 )
                 for c in codes
             }
-            cmap = plt.cm.get_cmap("tab20", len(codes) or 1)
+            cmap = plt.get_cmap("tab20", len(codes) or 1)
             code_to_idx = {code: idx for idx, code in enumerate(codes)}
             indexed = np.vectorize(lambda x: code_to_idx.get(x, -1))(crop_arr)
             masked = np.ma.masked_where(crop_arr == 0, indexed)
