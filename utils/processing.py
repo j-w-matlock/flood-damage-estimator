@@ -452,6 +452,7 @@ def run_monte_carlo(
             rows.append(
                 {
                     "CropCode": row["CropCode"],
+                    "CropName": row["CropName"],
                     "EAD_MC_Mean": round(float(np.mean(losses)), 2),
                     "EAD_MC_5th": round(float(np.percentile(losses, 5)), 2),
                     "EAD_MC_95th": round(float(np.percentile(losses, 95)), 2),

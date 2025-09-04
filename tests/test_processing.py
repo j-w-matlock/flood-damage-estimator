@@ -462,3 +462,4 @@ def test_run_monte_carlo_month_uncertainty(tmp_path):
     mc_mean = mc["floodA"].iloc[0]["EAD_MC_Mean"]
     expected = round(original_ead / 12, 2)
     assert mc_mean == pytest.approx(expected, rel=0.2)
+    assert "CropName" in mc["floodA"].columns
