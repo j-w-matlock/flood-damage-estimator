@@ -210,13 +210,13 @@ def process_flood_damage(
                     if isinstance(data, np.ndarray):
                         depth_arr = data.astype("float32")
                         crop_profile = base_crop_profile
-                        windows = list(base_crop_src.block_windows(1))
 
                         def read_depth(window, arr=depth_arr):
                             r0, c0 = window.row_off, window.col_off
                             return arr[r0 : r0 + window.height, c0 : c0 + window.width]
 
                         crop_reader = base_crop_src
+                        window_src = base_crop_src
                     else:
                         depth_path = data
                         depth_src = stack.enter_context(rasterio.open(depth_path))
@@ -231,10 +231,11 @@ def process_flood_damage(
                             )
                         )
                         crop_profile = crop_reader.profile.copy()
-                        windows = list(depth_src.block_windows(1))
 
                         def read_depth(window, src=depth_src):
                             return src.read(1, window=window, out_dtype="float32")
+
+                        window_src = depth_src
                 else:
                     depth_path = item
                     label = sanitize_label(
@@ -256,10 +257,11 @@ def process_flood_damage(
                         )
                     )
                     crop_profile = crop_reader.profile.copy()
-                    windows = list(depth_src.block_windows(1))
 
                     def read_depth(window, src=depth_src):
                         return src.read(1, window=window, out_dtype="float32")
+
+                    window_src = depth_src
 
                 crs = crop_profile["crs"]
                 unit_factor = 1.0
@@ -295,7 +297,7 @@ def process_flood_damage(
                 with rasterio.open(ratio_path, "w", **ratio_profile) as ratio_dst, rasterio.open(
                     crop_path_out, "w", **crop_profile_out
                 ) as crop_dst:
-                    for _, window in windows:
+                    for _, window in window_src.block_windows(1):
                         crop_block = crop_reader.read(1, window=window)
                         depth_block = read_depth(window).astype("float32")
                         damage_ratio = depth_block / FULL_DAMAGE_DEPTH_FT
