@@ -145,6 +145,25 @@ def test_process_flood_damage_sanitizes_labels(tmp_path):
         assert ch not in safe_label
 
 
+def test_process_flood_damage_raises_on_shape_mismatch(tmp_path):
+    crop = np.array([[1, 1], [1, 1]], dtype=np.uint16)
+    crop_path = tmp_path / "crop.tif"
+    create_raster(crop_path, crop, "EPSG:4326", from_origin(0, 2, 1, 1))
+
+    depth_arr = np.zeros((1, 1), dtype=float)
+    crop_inputs = {1: {"Value": 10, "GrowingSeason": [6]}}
+    out_dir = tmp_path / "out"
+    with pytest.raises(ValueError, match="align"):
+        process_flood_damage(
+            str(crop_path),
+            [("flood", depth_arr)],
+            str(out_dir),
+            100,
+            crop_inputs,
+            {},
+        )
+
+
 def test_process_flood_damage_reports_all_crops(tmp_path):
     crop = np.array([[1, 1], [1, 1]], dtype=np.uint16)
     crop_path = tmp_path / "crop.tif"
