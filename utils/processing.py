@@ -160,6 +160,7 @@ def process_flood_damage(
 
     with rasterio.open(crop_path) as base_crop_src:
         base_crop_profile = base_crop_src.profile.copy()
+        base_crop_shape = base_crop_src.read(1).shape
         unique_codes = set()
         for _, window in base_crop_src.block_windows(1):
             block = base_crop_src.read(1, window=window)
@@ -209,6 +210,11 @@ def process_flood_damage(
 
                     if isinstance(data, np.ndarray):
                         depth_arr = data.astype("float32")
+                        if depth_arr.shape != base_crop_shape:
+                            raise ValueError(
+                                f"Depth array shape {depth_arr.shape} does not match crop raster shape {base_crop_shape}. "
+                                "Please align inputs before processing."
+                            )
                         crop_profile = base_crop_profile
 
                         def read_depth(window, arr=depth_arr):
