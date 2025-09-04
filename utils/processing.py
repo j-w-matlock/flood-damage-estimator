@@ -316,8 +316,9 @@ def process_flood_damage(
                         for code in in_season_codes:
                             mask = crop_block == code
                             if mask.any():
-                                stats[code]["pixels"] += int(mask.sum())
-                                stats[code]["sum_ratio"] += damage_ratio[mask].sum()
+                                flood_mask = mask & (damage_ratio > 0)
+                                stats[code]["pixels"] += int(flood_mask.sum())
+                                stats[code]["sum_ratio"] += damage_ratio[flood_mask].sum()
 
                         damage_crop_block = crop_block.copy()
                         damage_crop_block[damage_ratio <= 0] = 0
