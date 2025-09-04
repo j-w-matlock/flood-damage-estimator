@@ -15,11 +15,9 @@ from utils.crop_definitions import (
     DEFAULT_GROWING_SEASON,
 )
 import matplotlib.pyplot as plt
-import numpy as np
 from collections import Counter
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as XLImage
-from matplotlib.patches import Patch
 
 st.set_page_config(layout="wide")
 st.title("🌾 Agricultural Flood Damage Estimator")
@@ -31,7 +29,6 @@ for key in [
     "diagnostics",
     "crop_path",
     "depth_inputs",
-    "damage_raster_paths",
     "label_map",
     "label_metadata",
     "crop_inputs",
@@ -257,25 +254,22 @@ if mode == "Direct Damages":
             st.session_state.temp_dir = tempfile.TemporaryDirectory()
             with st.spinner("🔄 Processing flood damages..."):
                 try:
-                    result_path, summaries, diagnostics, damage_raster_paths = (
-                        process_flood_damage(
-                            st.session_state.crop_path,
-                            st.session_state.depth_inputs,
-                            st.session_state.temp_dir.name,
-                            period_years,
-                            crop_inputs,
-                            st.session_state.label_metadata,
-                        )
+                    result_path, summaries, diagnostics, _ = process_flood_damage(
+                        st.session_state.crop_path,
+                        st.session_state.depth_inputs,
+                        st.session_state.temp_dir.name,
+                        period_years,
+                        crop_inputs,
+                        st.session_state.label_metadata,
                     )
                     st.session_state.result_path = result_path
                     st.session_state.summaries = summaries
                     st.session_state.diagnostics = diagnostics
-                    st.session_state.damage_raster_paths = damage_raster_paths
                     st.success("✅ Direct damage analysis complete.")
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
 
-    if st.session_state.result_path and "damage_raster_paths" in st.session_state:
+    if st.session_state.result_path:
         st.markdown("---")
         st.header("📈 Results & Visualizations")
 
@@ -319,40 +313,6 @@ if mode == "Direct Damages":
             st.subheader("🛠️ Diagnostics")
             st.dataframe(pd.DataFrame(st.session_state.diagnostics))
 
-        for label, paths in st.session_state.damage_raster_paths.items():
-            st.subheader(f"🗺️ Damage Raster – {label}")
-            with rasterio.open(paths.get("crop")) as src:
-                crop_arr = src.read(1)
-            codes = [c for c in np.unique(crop_arr) if c != 0]
-            name_map = {
-                c: st.session_state.crop_inputs.get(c, {}).get(
-                    "Name", CROP_DEFINITIONS.get(c, (str(c), 0))[0]
-                )
-                for c in codes
-            }
-            cmap = plt.get_cmap("tab20", len(codes) or 1)
-            code_to_idx = {code: idx for idx, code in enumerate(codes)}
-            indexed = np.vectorize(lambda x: code_to_idx.get(x, -1))(crop_arr)
-            masked = np.ma.masked_where(crop_arr == 0, indexed)
-            fig, ax = plt.subplots()
-            im = ax.imshow(masked, cmap=cmap, vmin=0, vmax=max(len(codes) - 1, 0))
-            ax.set_title(f"Damaged Crops: {label}")
-            handles = [
-                Patch(facecolor=cmap(code_to_idx[code]), label=name_map.get(code, str(code)))
-                for code in codes
-            ]
-            if handles:
-                ax.legend(handles=handles, title="Crop Type", bbox_to_anchor=(1.05, 1), loc="upper left")
-            ax.axis("off")
-            st.pyplot(fig)
-            raster_path = os.path.join(
-                st.session_state.temp_dir.name, f"raster_{label}.png"
-            )
-            # Preserve full raster image and legend when exporting
-            fig.savefig(raster_path, bbox_inches="tight")
-            plt.close(fig)
-            image_paths.setdefault(label, {})["raster"] = raster_path
-
         # Insert images into Excel
         if image_paths:
             wb = load_workbook(st.session_state.result_path)
@@ -361,8 +321,6 @@ if mode == "Direct Damages":
                     ws = wb[label]
                     if "bar" in imgs:
                         ws.add_image(XLImage(imgs["bar"]), "H2")
-                    if "raster" in imgs:
-                        ws.add_image(XLImage(imgs["raster"]), "H20")
             wb.save(st.session_state.result_path)
 
         with open(st.session_state.result_path, "rb") as file:
@@ -385,15 +343,13 @@ elif mode == "Monte Carlo Simulation":
             st.session_state.temp_dir = tempfile.TemporaryDirectory()
             with st.spinner("🔬 Running Monte Carlo..."):
                 try:
-                    result_path, summaries, diagnostics, damage_raster_paths = (
-                        process_flood_damage(
-                            st.session_state.crop_path,
-                            st.session_state.depth_inputs,
-                            st.session_state.temp_dir.name,
-                            period_years,
-                            crop_inputs,
-                            st.session_state.label_metadata,
-                        )
+                    result_path, summaries, diagnostics, _ = process_flood_damage(
+                        st.session_state.crop_path,
+                        st.session_state.depth_inputs,
+                        st.session_state.temp_dir.name,
+                        period_years,
+                        crop_inputs,
+                        st.session_state.label_metadata,
                     )
                     mc_results = run_monte_carlo(
                         summaries,
